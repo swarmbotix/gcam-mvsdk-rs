@@ -17,6 +17,10 @@ cargo run --example capabilities -- sb00 gige_ip read_sn    # read-only snippets
 cargo run --example capabilities -- sb00 --write exposure   # snippets that change settings
 ```
 
+The listing groups the snippets by the section numbers used below. Snippets that store their
+demonstration values persistently (`user_name`, `set_ip`, `parameter_groups`, `parameter_file`,
+`parameter_mode`) are refused unless `--persistent` is given as well.
+
 Each snippet receives this context:
 
 ```rust

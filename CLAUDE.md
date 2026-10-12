@@ -43,7 +43,12 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay; the
   only code that uses OpenCV.
 - `install.bash`: end-user installer. `scripts/fetch-sdk.sh`: SDK into `./vendor/`.
-- `sdk-manifest.toml`: known vendor releases. `.claude/skills/`: task procedures.
+- `sdk-manifest.toml`: known vendor releases.
+- `.claude/skills/`: task guides, each a `SKILL.md`. Using the driver: `camera-list`,
+  `camera-discovery` (0 cameras), `camera-rename`, `camera-setip`, `camera-configure`, `camera-grab`,
+  `run-live-view`, `run-capabilities-example`, `sdk-setup`. Developing it: `add-sdk-function`,
+  `release`, `hardware-test`. The Python repository uses the same skill names; keep every command in
+  a skill consistent with `gcam-mvsdk-rs <cmd> --help`.
 
 ## Commands
 

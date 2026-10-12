@@ -6,9 +6,10 @@
 //! Run read-only snippets:     cargo run --example capabilities -- <camera> gige_ip read_sn
 //! Run snippets that write:    cargo run --example capabilities -- <camera> --write exposure
 //!
-//! `<camera>` is a user-set name or serial number. Snippets marked "writes" change camera
-//! settings (some of them persistently, such as `user_name` and `set_ip`); they run only with
-//! `--write`.
+//! `<camera>` is a user-set name or serial number. Snippets that change settings for the session
+//! run only with `--write`. Snippets that store demonstration values persistently (`user_name`
+//! renames the camera to sb03, `set_ip` assigns 192.168.1.50/24, `parameter_groups` overwrites
+//! group B, `parameter_file`, `parameter_mode`) also need `--persistent`.
 
 use std::error::Error;
 use std::ffi::{c_char, c_int, c_uint, c_void, CString};
@@ -982,122 +983,164 @@ fn connection_callback(c: &Ctx) -> R {
 
 type Snippet = fn(&Ctx) -> R;
 
-/// Name, whether the snippet changes camera settings, function.
-const SNIPPETS: &[(&str, bool, Snippet)] = &[
-    ("user_name", true, user_name),
-    ("gige_ip", false, gige_ip),
-    ("set_ip", true, set_ip),
-    ("read_sn", false, read_sn),
-    ("user_data", false, user_data),
-    ("exposure", true, exposure),
-    ("auto_exposure", true, auto_exposure),
-    ("ae_target", true, ae_target),
-    ("ae_threshold", true, ae_threshold),
-    ("ae_exposure_range", true, ae_exposure_range),
-    ("ae_gain_range", true, ae_gain_range),
-    ("ae_window", true, ae_window),
-    ("analog_gain", true, analog_gain),
-    ("analog_gain_x", false, analog_gain_x),
-    ("rgb_gain", true, rgb_gain),
-    ("multi_exposure", false, multi_exposure),
-    ("anti_flick", true, anti_flick),
-    ("light_frequency", true, light_frequency),
-    ("frame_rate", true, frame_rate),
-    ("frame_speed", true, frame_speed),
-    ("trigger_mode", true, trigger_mode),
-    ("soft_trigger", true, soft_trigger),
-    ("trigger_count", true, trigger_count),
-    ("trigger_delay", true, trigger_delay),
-    ("trigger_period", true, trigger_period),
-    ("external_trigger", true, external_trigger),
-    ("play_pause_stop", true, play_pause_stop),
-    ("clear_buffer", true, clear_buffer),
-    ("resolution", true, resolution),
-    ("roi", true, roi),
-    ("resolution_for_snap", true, resolution_for_snap),
-    ("transfer_roi", true, transfer_roi),
-    ("mirror", true, mirror),
-    ("hardware_mirror", true, hardware_mirror),
-    ("rotate", true, rotate),
-    ("inverse", true, inverse),
-    ("flip_frame_buffer", true, flip_frame_buffer),
-    ("splice_lines", true, splice_lines),
-    ("isp_out_format", true, isp_out_format),
-    ("isp_processor", true, isp_processor),
-    ("monochrome", true, monochrome),
-    ("gamma", true, gamma),
-    ("contrast", true, contrast),
-    ("saturation", true, saturation),
-    ("sharpness", true, sharpness),
-    ("black_level", true, black_level),
-    ("white_level", true, white_level),
-    ("log_curve", true, log_curve),
-    ("noise_filter", true, noise_filter),
-    ("noise_reduction", true, noise_reduction),
-    ("denoise_3d", true, denoise_3d),
-    ("dead_pixel", true, dead_pixel),
-    ("bayer_algorithm", true, bayer_algorithm),
-    ("white_balance", true, white_balance),
-    ("wb_window", true, wb_window),
-    ("color_temperature", true, color_temperature),
-    ("user_color_temperature", true, user_color_temperature),
-    ("once_black_balance", true, once_black_balance),
-    ("lut", true, lut),
-    ("undistort", true, undistort),
-    ("io_state", true, io_state),
-    ("input_io", true, input_io),
-    ("output_io", true, output_io),
-    ("output_pulse", true, output_pulse),
-    ("strobe", true, strobe),
-    ("led", true, led),
-    ("lighting_controller", true, lighting_controller),
-    ("rotary_encoder", true, rotary_encoder),
-    ("packet_size", true, packet_size),
-    ("frame_resend", true, frame_resend),
-    ("parameter_groups", true, parameter_groups),
-    ("parameter_file", true, parameter_file),
-    ("parameter_mode", true, parameter_mode),
-    ("parameter_mask", true, parameter_mask),
-    ("sys_option", true, sys_option),
-    ("data_directory", true, data_directory),
-    ("frame_callback", true, frame_callback),
-    ("frame_event_callback", true, frame_event_callback),
-    ("connection_callback", true, connection_callback),
+/// What running a snippet changes.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Effect {
+    /// Reads only.
+    ReadOnly,
+    /// Changes settings for this session; nothing is saved (needs `--write`).
+    Writes,
+    /// Stores something in the camera or on disk with demonstration values (needs `--write --persistent`).
+    Persistent,
+}
+
+/// Section titles of docs/CAPABILITIES.md.
+const SECTIONS: &[&str] = &[
+    "Identity and network",
+    "Exposure and gain",
+    "Frame rate, trigger and timing",
+    "Image geometry",
+    "Image processing",
+    "Digital I/O, strobe and lighting",
+    "GigE transport",
+    "Parameter persistence",
+    "Callbacks",
+];
+
+/// Section of docs/CAPABILITIES.md, name, what running it changes, function.
+const SNIPPETS: &[(u8, &str, Effect, Snippet)] = &[
+    (1, "user_name", Effect::Persistent, user_name),
+    (1, "gige_ip", Effect::ReadOnly, gige_ip),
+    (1, "set_ip", Effect::Persistent, set_ip),
+    (1, "read_sn", Effect::ReadOnly, read_sn),
+    (1, "user_data", Effect::ReadOnly, user_data),
+    (2, "exposure", Effect::Writes, exposure),
+    (2, "auto_exposure", Effect::Writes, auto_exposure),
+    (2, "ae_target", Effect::Writes, ae_target),
+    (2, "ae_threshold", Effect::Writes, ae_threshold),
+    (2, "ae_exposure_range", Effect::Writes, ae_exposure_range),
+    (2, "ae_gain_range", Effect::Writes, ae_gain_range),
+    (2, "ae_window", Effect::Writes, ae_window),
+    (2, "analog_gain", Effect::Writes, analog_gain),
+    (2, "analog_gain_x", Effect::ReadOnly, analog_gain_x),
+    (2, "rgb_gain", Effect::Writes, rgb_gain),
+    (2, "multi_exposure", Effect::ReadOnly, multi_exposure),
+    (2, "anti_flick", Effect::Writes, anti_flick),
+    (2, "light_frequency", Effect::Writes, light_frequency),
+    (3, "frame_rate", Effect::Writes, frame_rate),
+    (3, "frame_speed", Effect::Writes, frame_speed),
+    (3, "trigger_mode", Effect::Writes, trigger_mode),
+    (3, "soft_trigger", Effect::Writes, soft_trigger),
+    (3, "trigger_count", Effect::Writes, trigger_count),
+    (3, "trigger_delay", Effect::Writes, trigger_delay),
+    (3, "trigger_period", Effect::Writes, trigger_period),
+    (3, "external_trigger", Effect::Writes, external_trigger),
+    (3, "play_pause_stop", Effect::Writes, play_pause_stop),
+    (3, "clear_buffer", Effect::Writes, clear_buffer),
+    (4, "resolution", Effect::Writes, resolution),
+    (4, "roi", Effect::Writes, roi),
+    (4, "resolution_for_snap", Effect::Writes, resolution_for_snap),
+    (4, "transfer_roi", Effect::Writes, transfer_roi),
+    (4, "mirror", Effect::Writes, mirror),
+    (4, "hardware_mirror", Effect::Writes, hardware_mirror),
+    (4, "rotate", Effect::Writes, rotate),
+    (4, "inverse", Effect::Writes, inverse),
+    (4, "flip_frame_buffer", Effect::Writes, flip_frame_buffer),
+    (4, "splice_lines", Effect::Writes, splice_lines),
+    (5, "isp_out_format", Effect::Writes, isp_out_format),
+    (5, "isp_processor", Effect::Writes, isp_processor),
+    (5, "monochrome", Effect::Writes, monochrome),
+    (5, "gamma", Effect::Writes, gamma),
+    (5, "contrast", Effect::Writes, contrast),
+    (5, "saturation", Effect::Writes, saturation),
+    (5, "sharpness", Effect::Writes, sharpness),
+    (5, "black_level", Effect::Writes, black_level),
+    (5, "white_level", Effect::Writes, white_level),
+    (5, "log_curve", Effect::Writes, log_curve),
+    (5, "noise_filter", Effect::Writes, noise_filter),
+    (5, "noise_reduction", Effect::Writes, noise_reduction),
+    (5, "denoise_3d", Effect::Writes, denoise_3d),
+    (5, "dead_pixel", Effect::Writes, dead_pixel),
+    (5, "bayer_algorithm", Effect::Writes, bayer_algorithm),
+    (5, "white_balance", Effect::Writes, white_balance),
+    (5, "wb_window", Effect::Writes, wb_window),
+    (5, "color_temperature", Effect::Writes, color_temperature),
+    (5, "user_color_temperature", Effect::Writes, user_color_temperature),
+    (5, "once_black_balance", Effect::Writes, once_black_balance),
+    (5, "lut", Effect::Writes, lut),
+    (5, "undistort", Effect::Writes, undistort),
+    (6, "io_state", Effect::Writes, io_state),
+    (6, "input_io", Effect::Writes, input_io),
+    (6, "output_io", Effect::Writes, output_io),
+    (6, "output_pulse", Effect::Writes, output_pulse),
+    (6, "strobe", Effect::Writes, strobe),
+    (6, "led", Effect::Writes, led),
+    (6, "lighting_controller", Effect::Writes, lighting_controller),
+    (6, "rotary_encoder", Effect::Writes, rotary_encoder),
+    (7, "packet_size", Effect::Writes, packet_size),
+    (7, "frame_resend", Effect::Writes, frame_resend),
+    (8, "parameter_groups", Effect::Persistent, parameter_groups),
+    (8, "parameter_file", Effect::Persistent, parameter_file),
+    (8, "parameter_mode", Effect::Persistent, parameter_mode),
+    (8, "parameter_mask", Effect::Writes, parameter_mask),
+    (8, "sys_option", Effect::Writes, sys_option),
+    (8, "data_directory", Effect::Writes, data_directory),
+    (9, "frame_callback", Effect::Writes, frame_callback),
+    (9, "frame_event_callback", Effect::Writes, frame_event_callback),
+    (9, "connection_callback", Effect::Writes, connection_callback),
 ];
 
 fn main() -> R {
     let mut args = std::env::args().skip(1);
     let Some(camera) = args.next() else {
-        println!("usage: capabilities <camera name or serial> [--write] [snippet ...]");
+        println!("usage: capabilities <camera name or serial> [--write [--persistent]] [snippet ...]");
         return Ok(());
     };
-    let (mut write, mut names) = (false, Vec::new());
+    let (mut write, mut persistent, mut names) = (false, false, Vec::new());
     for arg in args {
-        if arg == "--write" {
-            write = true;
-        } else {
-            names.push(arg);
+        match arg.as_str() {
+            "--write" => write = true,
+            "--persistent" => persistent = true,
+            _ => names.push(arg),
         }
     }
     if names.is_empty() {
-        for (name, writes, _) in SNIPPETS {
-            println!("{name}{}", if *writes { "  (writes)" } else { "" });
+        for (i, title) in SECTIONS.iter().enumerate() {
+            println!("{}. {title}", i + 1);
+            for (_, name, effect, _) in SNIPPETS.iter().filter(|s| usize::from(s.0) == i + 1) {
+                let note = match effect {
+                    Effect::ReadOnly => "",
+                    Effect::Writes => "  (writes; --write)",
+                    Effect::Persistent => "  (persistent; --write --persistent)",
+                };
+                println!("   {name}{note}");
+            }
         }
+        return Ok(());
+    }
+    // Check every name and flag before touching the camera.
+    let mut selected: Vec<(&str, Snippet)> = Vec::new();
+    for name in &names {
+        let Some(&(_, _, effect, run)) = SNIPPETS.iter().find(|s| s.1 == name) else {
+            eprintln!("{name}: unknown snippet");
+            continue;
+        };
+        if effect != Effect::ReadOnly && !write {
+            eprintln!("{name}: changes camera settings; add --write to run it");
+        } else if effect == Effect::Persistent && !persistent {
+            eprintln!("{name}: stores demonstration values persistently; add --persistent as well to run it");
+        } else {
+            selected.push((name, run));
+        }
+    }
+    if selected.is_empty() {
         return Ok(());
     }
     let sdk = Sdk::load()?;
     let dev = sdk.find_device(&camera)?;
     let cam = sdk.open(&dev)?;
     let ctx = Ctx { sdk, dev, cam };
-    for name in names {
-        let Some(&(_, writes, run)) = SNIPPETS.iter().find(|s| s.0 == name) else {
-            eprintln!("{name}: unknown snippet");
-            continue;
-        };
-        if writes && !write {
-            eprintln!("{name}: changes camera settings; add --write to run it");
-            continue;
-        }
+    for (name, run) in selected {
         match run(&ctx) {
             Ok(()) => println!("{name}: ok"),
             Err(e) => println!("{name}: {e}"),

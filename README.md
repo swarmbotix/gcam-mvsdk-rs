@@ -268,6 +268,9 @@ cargo run --example capabilities -- sb00 gige_ip read_sn    # read-only ones
 cargo run --example capabilities -- sb00 --write exposure   # ones that change settings
 ```
 
+Snippets that would store their demonstration values in the camera (renaming it, changing its IP
+address, overwriting a parameter group) are refused unless `--persistent` is added as well.
+
 What a particular camera supports, and in what range, depends on the model:
 `gcam-mvsdk-rs info <NAME or SN>` prints its capabilities.
 
@@ -513,6 +516,10 @@ gcam-mvsdk-rs list
   be found when running the Demo" is the source of the network requirements in
   [Known issues](#known-issues).
 - `bash install.bash --dev` builds in place and puts the SDK in `./vendor/` instead of your home.
+- [.claude/skills/](.claude/skills/) holds task guides for Claude Code, both for using the driver
+  (listing, discovering, renaming, re-addressing, configuring and grabbing from cameras, the live
+  view and capabilities examples, SDK setup) and for developing it (wrapping SDK functions,
+  releases, hardware tests). Each is a `SKILL.md` with steps, exact commands and safety rules.
 
 ## License
 

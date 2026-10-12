@@ -178,6 +178,16 @@ differs from it. Facts about the SDK were checked against SDK 2.1.0.49 for Linux
   `handle()` and `sdk()` plus the crate-private `get_i32`). 43 functions were added to the optional
   part of `ffi::Api`, with `tSdkFrameEvent` (32 bytes, asserted) and the frame-event and
   connection-status callback types.
+- The example's runner lists snippets grouped by the document's section numbers, checks names
+  and flags before opening the camera, and distinguishes three effects: read-only, session
+  changes (`--write`), and persistent changes with demonstration values (`--write --persistent`:
+  `user_name`, `set_ip`, `parameter_groups`, `parameter_file`, `parameter_mode`). The runner is
+  outside the `[doc:...]` regions, so the document is unaffected.
+- `.claude/skills/` has task guides for users of the driver (`camera-list`, `camera-rename`,
+  `camera-setip`, `camera-configure`, `camera-grab`, `run-live-view`, `run-capabilities-example`)
+  next to the developer ones; the names match the Python repository. `camera-configure` ships a
+  template program (`configure.rs`) that was compiled against the crate as a path dependency, but
+  it is not built in CI.
 - `Resolution` gained a public `raw` field holding the SDK record, so `set_image_resolution` passes
   a preset back exactly as the camera described it. This changes the struct's public fields
   (acceptable before 1.0).
