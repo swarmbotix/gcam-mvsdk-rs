@@ -1,0 +1,65 @@
+[package]
+name = "gcam-mvsdk-rs"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "Runtime-loaded Rust bindings and CLI for the HuaTeng Vision MVSDK (GigE and USB industrial cameras)"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/swarmbotix/gcam-mvsdk-rs"
+readme = "README.md"
+keywords = ["camera", "gige", "machine-vision", "mvsdk", "huateng"]
+categories = ["hardware-support", "multimedia::images", "api-bindings", "command-line-utilities"]
+include = [
+    "/Cargo.toml",
+    "/README.md",
+    "/LICENSE",
+    "/LICENSE-MIT",
+    "/LICENSE-APACHE",
+    "/IMPLEMENTATION_NOTES.md",
+    "/sdk-manifest.toml",
+    "/scripts/**",
+    "/src/**",
+    "/tests/**",
+]
+
+[lib]
+name = "gcam_mvsdk_rs"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gcam-mvsdk-rs"
+path = "src/main.rs"
+required-features = ["cli"]
+
+[[test]]
+name = "hw"
+path = "tests/hw/main.rs"
+
+[features]
+default = ["cli"]
+# Downloader and installer for the vendor SDK (`setup` module).
+setup = ["dep:ureq", "dep:flate2", "dep:tar", "dep:sha2", "dep:toml", "dep:humantime"]
+# The `gcam-mvsdk-rs` command-line tool.
+cli = ["setup", "dep:clap", "dep:png"]
+
+[dependencies]
+libloading = "0.8"
+encoding_rs = "0.8"
+thiserror = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+ureq = { version = "3", default-features = false, optional = true }
+flate2 = { version = "1", optional = true }
+tar = { version = "0.4", default-features = false, optional = true }
+sha2 = { version = "0.10", optional = true }
+toml = { version = "0.9", default-features = false, features = ["parse", "serde", "std"], optional = true }
+humantime = { version = "2", optional = true }
+clap = { version = "4.5", features = ["derive"], optional = true }
+png = { version = "0.18", optional = true }
+
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3"

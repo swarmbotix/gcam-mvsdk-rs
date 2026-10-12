@@ -1,0 +1,33 @@
+# Build output
+/target/
+
+# Vendor SDK: never committed (license forbids redistribution; size exceeds crates.io limits).
+# Populated by scripts/fetch-sdk.sh or `gcam-mvsdk-rs setup --dest vendor/`.
+/vendor/
+vendor/
+
+# Vendor archives and binaries
+*.tar.gz
+*.tgz
+*.tar
+*.rar
+*.zip
+*.7z
+*.so
+*.so.*
+*.dll
+*.dylib
+*.lib
+*.exe
+*.cti
+
+# Vendor headers
+CameraApi.h
+CameraDefine.h
+CameraStatus.h
+
+# Files the SDK writes into the working directory when a camera is opened
+/Camera/
+
+# Frames saved by `gcam-mvsdk-rs grab`
+*.png

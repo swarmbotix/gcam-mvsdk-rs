@@ -1,0 +1,18 @@
+gcam-mvsdk-rs is licensed under either of
+
+  * Apache License, Version 2.0 (see LICENSE-APACHE or
+    http://www.apache.org/licenses/LICENSE-2.0)
+  * MIT license (see LICENSE-MIT or https://opensource.org/licenses/MIT)
+
+at your option.
+
+SPDX-License-Identifier: MIT OR Apache-2.0
+
+Unless you explicitly state otherwise, any contribution intentionally submitted
+for inclusion in this work by you, as defined in the Apache-2.0 license, shall
+be dual licensed as above, without any additional terms or conditions.
+
+This license covers the Rust source code in this repository only. The HuaTeng
+Vision MVSDK, which the crate loads at runtime, is proprietary software of its
+vendor. It is not part of this repository or of the published crate, and it is
+not covered by this license.
