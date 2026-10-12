@@ -343,7 +343,7 @@ impl Progress {
         if !self.enabled {
             return;
         }
-        let pct = if self.total > 0 { self.done * 100 / self.total } else { 0 };
+        let pct = (self.done * 100).checked_div(self.total).unwrap_or(0);
         if self.tty {
             if self.last.elapsed() >= Duration::from_millis(200) || self.done >= self.total {
                 self.last = Instant::now();
