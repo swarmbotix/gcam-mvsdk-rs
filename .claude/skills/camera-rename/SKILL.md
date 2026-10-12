@@ -55,7 +55,6 @@ cam.set_user_name("sb00")?; // validated, then written to the camera's non-volat
 ```text
 SN 056090423003: user-set name "" -> "sb00"
 The name is stored in the camera's non-volatile memory and survives power cycles.
-Enumeration (the `Model` line of `list`) may show it only after the camera restarts.
 ```
 
 A line `warning: the camera reports ... after writing ...` means the read-back differs; run

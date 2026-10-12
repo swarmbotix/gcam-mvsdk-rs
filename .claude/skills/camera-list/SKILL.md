@@ -44,7 +44,6 @@ Text output, one block per camera:
 | Line | Meaning |
 |---|---|
 | `User-set name` | Name stored in the camera (set with `rename`). `<empty>` if never named; `<could not open: ...>` if another program holds the camera. Omitted with `--no-open`. |
-| `Model` | Name reported by enumeration (`acFriendlyName`). It may show the user-set name only after the camera restarts. |
 | `Product` | Internal product name (the same for every unit of a model). |
 | `Serial number` | Factory serial number; unique and never changes. |
 | `Port type` | Interface, for example a GigE or USB description. |

@@ -375,7 +375,6 @@ fn cmd_list(sdk: &Sdk, as_json: bool, no_open: bool) -> Result<ExitCode> {
             };
             println!("    User-set name : {user}");
         }
-        println!("    Model         : {}", d.friendly_name);
         println!("    Product       : {}", d.product_name);
         println!("    Serial number : {}", d.serial);
         println!("    Port type     : {}", d.port_type);
@@ -436,7 +435,6 @@ fn cmd_rename(sdk: &Sdk, serial: &str, name: &str) -> Result<ExitCode> {
         println!("warning: the camera reports {now:?} after writing {name:?}");
     }
     println!("The name is stored in the camera's non-volatile memory and survives power cycles.");
-    println!("Enumeration (the `Model` line of `list`) may show it only after the camera restarts.");
     Ok(ExitCode::SUCCESS)
 }
 
