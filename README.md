@@ -225,8 +225,9 @@ Two things your program needs at run time, on every machine it runs on, exactly 
 
 ## Privileges and network
 
-GigE discovery needs four things. `gcam-mvsdk-rs doctor` checks each one and prints the command
-for your machine.
+GigE discovery needs four things, and streaming at the camera's full frame rate needs a fifth.
+`gcam-mvsdk-rs doctor` checks the first four and prints the command for your machine; the fifth is
+not checked by `doctor` and is explained under [Known issues](#known-issues).
 
 ```bash
 # 1. Raw-socket capability for the command (install.bash offers this; repeat after reinstalling)
@@ -241,6 +242,11 @@ sudo ufw allow from 192.168.1.0/24
 
 # 4. Host NIC and cameras in the same subnet: give the NIC a static address, or move a camera
 gcam-mvsdk-rs setip 00-1A-2B-3C-4D-5E 192.168.1.50 255.255.255.0 0.0.0.0
+
+# 5. Larger socket receive buffers, now and after reboot (needed for full frame rate; see Known issues)
+sudo sysctl -w net.core.rmem_max=33554432 net.core.rmem_default=33554432
+printf 'net.core.rmem_max=33554432\nnet.core.rmem_default=33554432\n' \
+  | sudo tee -a /etc/sysctl.d/90-gige-camera.conf
 
 # USB cameras instead: vendor udev rules
 sudo cp ~/.gcam-mvsdk/2.1.0.49/udev/*.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
@@ -259,12 +265,78 @@ found. Inside Docker, use `network_mode: host` and `privileged: true`.
 | Symptom | Cause and fix |
 |---|---|
 | `gcam-mvsdk-rs: command not found` | `~/.cargo/bin` is not on `PATH` in this terminal. Run `source ~/.cargo/env`, or `export PATH="$HOME/.cargo/bin:$PATH"` and add it to `~/.bashrc`. Being in the repository directory does not help. |
-| `list` finds 0 cameras | Most often missing privileges: run the `setcap` command above, or `sudo -E gcam-mvsdk-rs list`. Then check power and cabling, `rp_filter`, the firewall, and that a network card has an address in the camera subnet (`gcam-mvsdk-rs doctor` reports each). Discovery only reaches cameras on the same network segment. |
+| `list` finds 0 cameras | Most often missing privileges: run the `setcap` command above, or `sudo -E gcam-mvsdk-rs list`. Then check power and cabling, `rp_filter` (Ubuntu 24.04 default is 2, which drops the camera's reply), the firewall, and that a network card has an address in the camera subnet (`gcam-mvsdk-rs doctor` reports each). Discovery only reaches cameras on the same network segment. Details under [Known issue 1](#1-list-finds-no-cameras-and-the-camera-is-absent-from-arp--a). |
 | `could not find the HuaTeng MVSDK library` | Run `bash install.bash` or `gcam-mvsdk-rs setup`, or set `GCAM_MVSDK_DIR`. The message lists every place that was checked. A wrong `GCAM_MVSDK_DIR` is reported, not ignored. |
 | Status `-13`, `32774` (0x8006) or `-45` when opening a camera | The camera is busy: another program or another computer holds it (a running publisher, a container, the vendor GUI). Stop that program, wait a few seconds for the camera's heartbeat to expire, or power-cycle the camera. `list --no-open` still works meanwhile. |
 | `Permission denied` | USB cameras: install the udev rules. `setcap`: needs `sudo`, and has no effect on file systems mounted `nosuid`. Files under `~/.gcam-mvsdk` owned by root (from an earlier `sudo` run): `sudo chown -R "$USER" ~/.gcam-mvsdk`. |
 | `grab` times out | The GigE packet size exceeds the network card's MTU: use `--mtu 1500` (or enable jumbo frames). Also check the firewall and `rp_filter`. |
+| Frame rate stuck near 60 fps, no frames lost | `net.core.rmem_max` is at the Ubuntu default (about 200 KB) and the camera throttles itself after resend requests. Apply step 5 in [Privileges and network](#privileges-and-network); details under [Known issue 2](#2-frame-rate-capped-near-60-fps-although-no-frames-are-lost). |
 | Download fails, or the size or checksum does not match | The vendor may have moved or replaced the file. Download the Linux SDK from http://huatengvision.com/download/1/ and install it with `--from` (below). A checksum mismatch is never overridden. |
+
+## Known issues
+
+Two problems appear on nearly every fresh Ubuntu host. Neither is a bug in this package or in the
+SDK; both are kernel defaults that are wrong for GigE Vision cameras. `install.bash` never changes
+them (see [What it never does](#what-it-never-does)), so apply each fix once per host.
+
+### 1. `list` finds no cameras, and the camera is absent from `arp -a`
+
+**Symptom.** The camera is powered, the switch link LED is on, and the host NIC is up, yet
+`gcam-mvsdk-rs list` reports no cameras. The camera's MAC address does not appear in `arp -a` either.
+Inside Docker with `network_mode: host` the result is identical, so the container is not the cause.
+
+**Why it happens.** A GigE Vision camera answers the discovery broadcast from whatever address it
+currently holds. A fresh camera usually has a link-local address (169.254.x.x) or an address left
+over from another network, so its reply arrives from a subnet the host has no route to. Ubuntu
+24.04 ships with `net.ipv4.conf.*.rp_filter = 2` (loose reverse-path filtering), which silently
+drops such packets inside the kernel, before any user-space program sees them. That is why the
+camera is missing from `arp -a` as well. When `ufw` is enabled it additionally blocks the inbound
+GigE Vision control port (UDP 3956), which stops discovery even with `rp_filter` at 0.
+
+**Fix.** Steps 2 and 3 in [Privileges and network](#privileges-and-network): set `rp_filter` to 0
+for all interfaces and for the camera NIC, write the setting to `/etc/sysctl.d/90-gige-camera.conf` so it
+survives a reboot, and allow inbound traffic from the camera in the firewall (or disable `ufw` on an
+isolated lab host). If the camera still has an address outside the host subnet afterwards, move it
+with `setip` (step 4).
+
+**Verify.**
+
+```bash
+sysctl net.ipv4.conf.all.rp_filter net.ipv4.conf.enp2s0.rp_filter   # both must print 0
+sudo ufw status                                                      # inactive, or an allow rule for the camera
+gcam-mvsdk-rs list                                                    # the camera is listed
+```
+
+### 2. Frame rate capped near 60 fps although no frames are lost
+
+**Symptom.** Streaming works and the lost-frame counter stays at zero, but the rate settles near
+60 fps at full resolution (about 85 fps at 1280x720) on a camera rated for 91 fps. `info` shows that
+the configured frame rate is not the limit.
+
+| State | Throughput | Frame rate (1280x1024 mono) |
+|---|---|---|
+| Default `rmem_max` (about 200 KB) | 79.9 MB/s | 61 fps |
+| `rmem_max` = 32 MB | 119.9 MB/s | 91.5 fps |
+
+**Why it happens.** Ubuntu's default `net.core.rmem_max` is about 200 KB, while one 1280x1024
+mono frame is 1.3 MB and arrives as a burst of packets at wire speed. The kernel socket buffer
+overflows in the few milliseconds between the camera sending a frame and the SDK draining it,
+packets are dropped, the GigE Vision stream issues resend requests, and the camera firmware reacts
+by stepping down to a "safe" rate of roughly 78 MB/s. The camera is choosing to send more slowly,
+which is why no frames are reported lost.
+
+**Fix.** Step 5 in [Privileges and network](#privileges-and-network): raise `net.core.rmem_max`
+and `net.core.rmem_default` to 32 MB (33554432 bytes) and append them to
+`/etc/sysctl.d/90-gige-camera.conf`. The SDK sizes its sockets when a camera is opened, so restart any program
+that was already streaming. Inside Docker with `network_mode: host` the new values apply at once,
+without a rebuild.
+
+**Verify.**
+
+```bash
+sysctl net.core.rmem_max net.core.rmem_default   # both must print 33554432
+gcam-mvsdk-rs grab <NAME or SN> -n 200           # then compare the wall-clock time against the rated frame rate
+```
 
 ## Air-gapped install
 
@@ -327,6 +399,9 @@ gcam-mvsdk-rs list
 
 - Design and background: [PLAN_RUST_WRAPPER.md](PLAN_RUST_WRAPPER.md)
 - Conventions, layout and procedures for working on this repository: [CLAUDE.md](CLAUDE.md)
+- Vendor SDK manual (English, SDK 2.1.0.49): [docs/LinuxSDK_Document_V2.1.0.49.pdf](docs/LinuxSDK_Document_V2.1.0.49.pdf).
+  Chapter "The camera cannot be found when running the Demo" is the source of the network
+  requirements in [Known issues](#known-issues).
 - `bash install.bash --dev` builds in place and puts the SDK in `./vendor/` instead of your home.
 
 ## License
