@@ -225,16 +225,19 @@ Two things your program needs at run time, on every machine it runs on, exactly 
 
 ## Live view
 
-A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). It needs OpenCV and
-libclang at build time:
+A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). OpenCV cannot be
+installed through Cargo: the `opencv` crate is a binding to the system OpenCV library, and no
+Cargo-installable OpenCV exists, so OpenCV and libclang come from the operating system's packages:
 
 ```bash
 sudo apt-get install -y libopencv-dev clang libclang-dev
-cargo run --release --features view --example live_view -- sb00   # name or serial; omit with one camera
+cargo run --release --features view --example live_view -- <camera>
+# quit: q or Esc (closing the window also quits)
 ```
 
-Press `q` or Esc, or close the window, to quit. Options: `--exposure-us 5000` (default) and
-`--mtu 1500` (packet size, as for `grab`). It needs a display: a desktop session with `DISPLAY`
+`<camera>` is a user-set name or serial number; omit it when exactly one camera is present.
+Options: `--exposure-us 5000` (default) and `--mtu 1500` (packet size, as for `grab`).
+It needs a display: a desktop session with `DISPLAY`
 set, or, in Docker, the X socket shared into the container and `xhost +local:` run on the host.
 GigE discovery needs `CAP_NET_RAW` for the example binary as well:
 `sudo setcap cap_net_raw,cap_net_admin+ep target/release/examples/live_view` after each build, or

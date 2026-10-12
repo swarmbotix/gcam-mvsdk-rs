@@ -178,6 +178,12 @@ differs from it. Facts about the SDK were checked against SDK 2.1.0.49 for Linux
   loop continues; `q`, Esc, or a closed window (`WND_PROP_VISIBLE < 1`) ends it.
 - The CI job `example-view` (Ubuntu, `libopencv-dev clang libclang-dev` from apt) runs clippy on
   the example with `-D warnings`; it is the only build verification of the example.
+- OpenCV cannot be installed through Cargo. The `opencv` crate is a binding to a system OpenCV
+  (found with pkg-config, CMake or vcpkg) and generates its bindings with libclang at build time;
+  no crate ships an OpenCV build that Cargo could install. The documented prerequisite is
+  therefore `sudo apt-get install -y libopencv-dev clang libclang-dev`. A pure-Rust window crate
+  was considered as a Cargo-only alternative and not adopted, because the owner chose to keep
+  OpenCV. `opencv` is at 0.101.1, the newest release on crates.io as of 2026-10-12.
 
 ## Installer and developer tooling
 
