@@ -420,9 +420,11 @@ gcam-mvsdk-rs list
 
 - Design and background: [PLAN_RUST_WRAPPER.md](PLAN_RUST_WRAPPER.md)
 - Conventions, layout and procedures for working on this repository: [CLAUDE.md](CLAUDE.md)
-- Vendor SDK manual (English, SDK 2.1.0.49): [docs/LinuxSDK_Document_V2.1.0.49.pdf](docs/LinuxSDK_Document_V2.1.0.49.pdf).
-  Chapter "The camera cannot be found when running the Demo" is the source of the network
-  requirements in [Known issues](#known-issues).
+- Vendor SDK manual (English, SDK 2.1.0.49): [docs/LinuxSDK_Document_V2.1.0.49.pdf](docs/LinuxSDK_Document_V2.1.0.49.pdf),
+  taken from the Linux SDK archive on HuaTeng's download page, http://huatengvision.com/download/1/,
+  where newer SDK versions and the Chinese readme are also published. Chapter "The camera cannot
+  be found when running the Demo" is the source of the network requirements in
+  [Known issues](#known-issues).
 - `bash install.bash --dev` builds in place and puts the SDK in `./vendor/` instead of your home.
 
 ## License
