@@ -136,6 +136,36 @@ are found through the udev rules.
 `list --no-open` skips reading user-set names, which requires opening each camera briefly; use it
 while another program is streaming. `gcam-mvsdk-rs <command> --help` lists every option.
 
+## Name your cameras
+
+A new camera has no name; its serial number is the only unique identifier. Give each camera a
+short name once, and from then on select it by that name everywhere (`list`, `info`, `grab`, the
+library, your own launch scripts). The name is written into the camera's non-volatile memory and
+survives power cycles and moving the camera to another computer.
+
+```bash
+gcam-mvsdk-rs list                       # find the serial number of the camera you plugged in
+gcam-mvsdk-rs rename 056090423003 sb00   # write the name into that camera
+gcam-mvsdk-rs list                       # the "user-set name" column now shows sb00
+gcam-mvsdk-rs info sb00                  # select by name from now on
+```
+
+Rules: at most 31 bytes, ASCII, none of `\ / : * ? " < > |`. Pick names that are unique on your
+network; if two cameras carry the same name, selection by name is ambiguous and you must fall back
+to the serial number. The camera must not be open in another program while you rename it; stop
+any publisher or viewer first (status `-13` or `32774` means it is still held).
+
+The same from Rust:
+
+```rust
+let cam = sdk.open(&sdk.find_device("056090423003")?)?;   // by serial, since it has no name yet
+println!("current name: {:?}", cam.user_name()?);
+cam.set_user_name("sb00")?;                                // persists in the camera
+```
+
+Renaming is one of about 80 settings the SDK exposes; see [What the SDK can change](#what-the-sdk-can-change)
+for the full list with use cases and examples.
+
 ## Install the command without install.bash
 
 If you already have Rust and want only the `gcam-mvsdk-rs` command, any of these puts it in
