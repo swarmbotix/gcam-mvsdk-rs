@@ -227,7 +227,8 @@ Two things your program needs at run time, on every machine it runs on, exactly 
 
 A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). OpenCV cannot be
 installed through Cargo: the `opencv` crate is a binding to the system OpenCV library, and no
-Cargo-installable OpenCV exists, so OpenCV and libclang come from the operating system's packages:
+Cargo-installable OpenCV exists, so OpenCV and libclang come from the operating system's packages.
+On Ubuntu:
 
 ```bash
 sudo apt-get install -y libopencv-dev clang libclang-dev
@@ -243,6 +244,44 @@ GigE discovery needs `CAP_NET_RAW` for the example binary as well:
 `sudo setcap cap_net_raw,cap_net_admin+ep target/release/examples/live_view` after each build, or
 `sudo -E target/release/examples/live_view sb00`. The `view` feature is off by default, so building
 the crate or the command never requires OpenCV.
+
+On other distributions, install OpenCV 4 and libclang as described in the `opencv` crate's own
+instructions: https://github.com/twistedfall/opencv-rust#getting-opencv
+
+### Add OpenCV to your own project
+
+```bash
+cargo add opencv --features highgui,imgproc
+```
+
+Adding `--no-default-features` builds only these two modules, as the example does
+(`opencv = { version = "0.101", default-features = false, features = ["highgui", "imgproc"] }`).
+A frame then goes into a `Mat` without a copy. With `OutputFormat::Mono8` each pixel is one byte,
+so the `Mat` is `CV_8UC1`:
+
+```rust
+use std::time::Duration;
+use gcam_mvsdk_rs::{Camera, OutputFormat};
+use opencv::{core::Mat, highgui};
+
+fn show(cam: &Camera) -> Result<(), Box<dyn std::error::Error>> {
+    cam.set_output_format(OutputFormat::Mono8)?;
+    cam.play()?;
+    let mut pixels = Vec::new(); // reused for every frame
+    loop {
+        let frame = cam.grab(Duration::from_secs(1))?;
+        pixels.resize(frame.processed_len()?, 0);
+        let info = frame.process_into(&mut pixels)?; // vendor image pipeline into our buffer
+        drop(frame); // return the SDK buffer
+        let (h, w) = (info.height as i32, info.width as i32);
+        let mat = Mat::new_rows_cols_with_data(h, w, &pixels[..info.len])?; // CV_8UC1 view, no copy
+        highgui::imshow("camera", &mat)?;
+        if highgui::wait_key(1)? == 27 {
+            return Ok(()); // Esc
+        }
+    }
+}
+```
 
 ## Privileges and network
 
