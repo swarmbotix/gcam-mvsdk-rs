@@ -32,6 +32,12 @@ It runs, and stops at the first failure:
 7. `cargo publish --dry-run --locked --allow-dirty --target-dir target/package-verify` (crate size
    must stay far below 10 MB; the separate target directory keeps `target/debug` valid)
 
+8. The OpenCV example must not be required: `view` is not a default feature and
+   `[[example]] live_view` keeps `required-features = ["view"]`, so steps 2 to 7 pass on a machine
+   without OpenCV. Its own check runs in the CI job `example-view` (or locally, with OpenCV
+   installed: `cargo clippy --features view --example live_view -- -D warnings`); make sure that
+   job is green before tagging.
+
 Optionally run the hardware tests on the bench machine (see the hardware-test skill).
 
 ## 3. Tag (when asked)

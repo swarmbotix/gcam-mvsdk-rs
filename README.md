@@ -223,6 +223,24 @@ Two things your program needs at run time, on every machine it runs on, exactly 
 2. `CAP_NET_RAW` for GigE discovery: `sudo setcap cap_net_raw,cap_net_admin+ep target/release/your-binary`
    after each build, or run it with `sudo -E`.
 
+## Live view
+
+A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). It needs OpenCV and
+libclang at build time:
+
+```bash
+sudo apt-get install -y libopencv-dev clang libclang-dev
+cargo run --release --features view --example live_view -- sb00   # name or serial; omit with one camera
+```
+
+Press `q` or Esc, or close the window, to quit. Options: `--exposure-us 5000` (default) and
+`--mtu 1500` (packet size, as for `grab`). It needs a display: a desktop session with `DISPLAY`
+set, or, in Docker, the X socket shared into the container and `xhost +local:` run on the host.
+GigE discovery needs `CAP_NET_RAW` for the example binary as well:
+`sudo setcap cap_net_raw,cap_net_admin+ep target/release/examples/live_view` after each build, or
+`sudo -E target/release/examples/live_view sb00`. The `view` feature is off by default, so building
+the crate or the command never requires OpenCV.
+
 ## Privileges and network
 
 GigE discovery needs four things, and streaming at the camera's full frame rate needs a fifth.

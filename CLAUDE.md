@@ -38,6 +38,8 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `src/doctor.rs`: host checks (CAP_NET_RAW, rp_filter, firewall, NIC subnets).
 - `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | doctor`.
 - `tests/`: struct sizes, status table, search path, manifest, setup/extraction; `tests/hw/` hardware tests.
+- `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay; the
+  only code that uses OpenCV.
 - `install.bash`: end-user installer. `scripts/fetch-sdk.sh`: SDK into `./vendor/`.
 - `sdk-manifest.toml`: known vendor releases. `.claude/skills/`: task procedures.
 
@@ -52,7 +54,11 @@ cargo publish --dry-run --allow-dirty --target-dir target/package-verify
 sh scripts/check-no-vendor-files.sh
 ./scripts/fetch-sdk.sh --from <tarball>           # SDK into ./vendor/ for cargo run
 GCAM_MVSDK_HW_TEST=1 cargo test --test hw -- --nocapture   # bench machine only
+cargo clippy --features view --example live_view -- -D warnings   # needs libopencv-dev clang libclang-dev
 ```
+
+Without `--features view` every command above skips the example, so none of them needs OpenCV;
+the CI job `example-view` installs OpenCV and is the build check for the example.
 
 All of these must pass before work is considered done. Run the publish dry run with its own
 `--target-dir`: with the shared target directory, its verification build overwrites the
@@ -112,7 +118,9 @@ to `../gcam-mvsdk-py/sdk-manifest.toml`: edit both, then
 ## Do not
 
 - Commit vendor binaries, headers, archives, or `vendor/`; or add a `build.rs` that touches the SDK.
-- Link at build time, add bindgen, or commit generated bindings.
+- Link the vendor SDK at build time, add bindgen for it, or commit generated bindings. (The
+  `opencv` crate builds with libclang, which is why it stays an optional dependency behind `view`;
+  never add `view` to the default features or use OpenCV from `src/`.)
 - Add a second crate or rename anything.
 - Call `CameraSdkInit` outside `Sdk`, or close a handle outside `Camera::drop`.
 - Write to the SDK home from tests (use `tempfile`), or run `rename`/`setip` against production

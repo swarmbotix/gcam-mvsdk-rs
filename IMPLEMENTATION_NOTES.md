@@ -163,6 +163,22 @@ differs from it. Facts about the SDK were checked against SDK 2.1.0.49 for Linux
 - **`Cargo.lock` is committed** (it is not ignored), so `cargo install --locked` and
   `cargo build --locked` reproduce the tested dependency versions.
 
+## OpenCV live view example
+
+- `examples/live_view.rs` uses `opencv` 0.101 (`default-features = false`, `highgui` and
+  `imgproc`), an optional dependency enabled by the feature `view`. The example is declared with
+  `required-features = ["view"]`, so `cargo build --all-targets`, `cargo test`, clippy and
+  `cargo publish --dry-run` skip it and never need OpenCV or libclang.
+- The safe API exposes the raw SDK buffer read-only (`Frame::as_slice`), but the FPS overlay needs
+  a writable image. The example therefore runs the vendor ISP (`Frame::process_into`) into one
+  reusable buffer, which `Mat::new_rows_cols_with_data_mut` wraps as `CV_8UC1` without copying.
+  This matches the production C++ publisher (`CameraImageProcess`, then a `cv::Mat` over the
+  output buffer). The raw buffer is returned to the SDK before drawing.
+- FPS is the number of frames displayed in the last second. A time-out prints one line and the
+  loop continues; `q`, Esc, or a closed window (`WND_PROP_VISIBLE < 1`) ends it.
+- The CI job `example-view` (Ubuntu, `libopencv-dev clang libclang-dev` from apt) runs clippy on
+  the example with `-D warnings`; it is the only build verification of the example.
+
 ## Installer and developer tooling
 
 - **`install.bash`** (bash 4+, `set -euo pipefail`) runs: platform and architecture detection
