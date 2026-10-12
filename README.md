@@ -136,14 +136,62 @@ are found through the udev rules.
 `list --no-open` skips reading user-set names, which requires opening each camera briefly; use it
 while another program is streaming. `gcam-mvsdk-rs <command> --help` lists every option.
 
-## Use from Rust
+## Install the command without install.bash
+
+If you already have Rust and want only the `gcam-mvsdk-rs` command, any of these puts it in
+`~/.cargo/bin`:
+
+```bash
+# from a local clone
+cargo install --path /path/to/gcam-mvsdk-rs --locked
+
+# straight from GitHub, no clone needed
+cargo install --git https://github.com/swarmbotix/gcam-mvsdk-rs --tag v0.1.0 --locked
+
+# later, once published to crates.io
+cargo install gcam-mvsdk-rs
+```
+
+Then fetch the SDK once and, if you want discovery without `sudo`, grant the capability:
+
+```bash
+gcam-mvsdk-rs setup
+sudo setcap cap_net_raw,cap_net_admin+ep "$(command -v gcam-mvsdk-rs)"
+gcam-mvsdk-rs list
+```
+
+## Use from your own Cargo project
+
+Add the dependency from inside your project directory. Pick one line:
+
+```bash
+# local clone (absolute path recommended; Cargo rebuilds it with your project)
+cargo add gcam-mvsdk-rs --path /path/to/gcam-mvsdk-rs
+
+# GitHub, pinned to a tag
+cargo add gcam-mvsdk-rs --git https://github.com/swarmbotix/gcam-mvsdk-rs --tag v0.1.0
+
+# later, once published to crates.io
+cargo add gcam-mvsdk-rs
+
+# library only, without the CLI and downloader dependencies (add to any of the above)
+cargo add gcam-mvsdk-rs --path /path/to/gcam-mvsdk-rs --no-default-features
+```
+
+Which writes one of these into your `Cargo.toml`:
 
 ```toml
 [dependencies]
-gcam-mvsdk-rs = { path = "../drivers/gcam-mvsdk-rs" }
-# or: gcam-mvsdk-rs = { git = "https://github.com/swarmbotix/gcam-mvsdk-rs", tag = "v0.1.0" }
-# add default-features = false to leave out the CLI and downloader dependencies
+gcam-mvsdk-rs = { path = "/path/to/gcam-mvsdk-rs" }
+gcam-mvsdk-rs = { git = "https://github.com/swarmbotix/gcam-mvsdk-rs", tag = "v0.1.0" }
+gcam-mvsdk-rs = "0.1"
 ```
+
+Inside the `vision_workspace` checkout the relative form is
+`gcam-mvsdk-rs = { path = "../../drivers/gcam-mvsdk-rs" }` from `camera_publishers/cam_gige_ht/`
+and `{ path = "../drivers/gcam-mvsdk-rs" }` from `camera_ips/`.
+
+Then in code (the crate name becomes `gcam_mvsdk_rs`):
 
 ```rust
 use std::time::Duration;
@@ -166,9 +214,14 @@ fn main() -> gcam_mvsdk_rs::Result<()> {
 ```
 
 `frame.as_slice()` is the raw sensor buffer without a copy; `frame.process()` runs the vendor's
-image pipeline into a new buffer. Every machine that runs your program needs the SDK installed
-(`bash install.bash` or `gcam-mvsdk-rs setup`), and the program itself needs `CAP_NET_RAW` or root
-for GigE discovery, exactly like the command.
+image pipeline into a new buffer.
+
+Two things your program needs at run time, on every machine it runs on, exactly like the command:
+
+1. The SDK installed: `gcam-mvsdk-rs setup`, or `bash install.bash`, or `GCAM_MVSDK_DIR` pointing
+   at an extracted copy. The library finds it with the same search order as the command.
+2. `CAP_NET_RAW` for GigE discovery: `sudo setcap cap_net_raw,cap_net_admin+ep target/release/your-binary`
+   after each build, or run it with `sudo -E`.
 
 ## Privileges and network
 
