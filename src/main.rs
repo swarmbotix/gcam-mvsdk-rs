@@ -7,14 +7,14 @@ use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::time::Duration;
 
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
 use gcam_mvsdk_rs::doctor::{self, Check, Level};
 use gcam_mvsdk_rs::setup::{self, Manifest, SetupOptions, SetupOutcome};
 use gcam_mvsdk_rs::{
-    host_os, normalize_mac, resolve_library, Candidate, DeviceInfo, Error, OutputFormat, Result, SearchConfig,
-    Sdk, TargetOs, TriggerMode,
+    host_os, normalize_mac, resolve_library, Candidate, DeviceInfo, Error, OutputFormat, ParameterTeam, Result,
+    SearchConfig, Sdk, TargetOs, TriggerMode,
 };
 
 #[derive(Parser)]
@@ -77,6 +77,8 @@ enum Command {
     },
     /// Save frames from one camera as PNG files
     Grab(GrabArgs),
+    /// Change frame rate and exposure of one camera; without options, print them
+    Set(SetArgs),
     /// Check the SDK installation, privileges and network configuration
     Doctor,
 }
@@ -129,6 +131,51 @@ struct GrabArgs {
     mtu: Option<u32>,
 }
 
+#[derive(Args)]
+struct SetArgs {
+    /// User-set name or serial number
+    #[arg(value_name = "NAME_OR_SN")]
+    camera: String,
+    /// Frame-rate cap in Hz; 0 removes the cap (only some GigE models support it)
+    #[arg(long, value_name = "HZ")]
+    frame_rate: Option<i32>,
+    /// Exposure time in microseconds (turns automatic exposure off)
+    #[arg(long, value_name = "US")]
+    exposure_us: Option<f64>,
+    /// Automatic exposure on or off
+    #[arg(long, value_name = "on|off")]
+    auto_exposure: Option<OnOff>,
+    /// Store the settings in this parameter group, loaded again when the camera is next opened
+    #[arg(long, value_name = "A|B|C|D", ignore_case = true)]
+    save: Option<Group>,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum)]
+enum OnOff {
+    On,
+    Off,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum)]
+#[value(rename_all = "UPPER")]
+enum Group {
+    A,
+    B,
+    C,
+    D,
+}
+
+impl Group {
+    fn team(self) -> ParameterTeam {
+        match self {
+            Group::A => ParameterTeam::A,
+            Group::B => ParameterTeam::B,
+            Group::C => ParameterTeam::C,
+            Group::D => ParameterTeam::D,
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let cli = Cli::parse();
     match run(cli) {
@@ -151,6 +198,7 @@ fn run(cli: Cli) -> Result<ExitCode> {
         }
         Command::Info { camera } => cmd_info(&load_sdk(data_dir.as_deref(), true)?, &camera),
         Command::Grab(args) => cmd_grab(&load_sdk(data_dir.as_deref(), true)?, args),
+        Command::Set(args) => cmd_set(&load_sdk(data_dir.as_deref(), true)?, args),
         Command::Doctor => cmd_doctor(),
     }
 }
@@ -703,6 +751,47 @@ fn cmd_grab(sdk: &Sdk, args: GrabArgs) -> Result<ExitCode> {
 }
 
 // ---------------------------------------------------------------------------
+// set
+// ---------------------------------------------------------------------------
+
+fn cmd_set(sdk: &Sdk, args: SetArgs) -> Result<ExitCode> {
+    if args.exposure_us.is_some() && args.auto_exposure == Some(OnOff::On) {
+        return Err(Error::InvalidArgument("--exposure-us turns automatic exposure off; drop --auto-exposure on".into()));
+    }
+    let dev = sdk.find_device(&args.camera)?;
+    let cam = sdk.open(&dev)?;
+    let on_off = |r: Result<bool>| show(r.map(|on| if on { "on" } else { "off" }));
+    let (rate, exposure, auto) = (show(cam.frame_rate()), show(cam.exposure_us()), on_off(cam.auto_exposure()));
+    if args.frame_rate.is_none() && args.exposure_us.is_none() && args.auto_exposure.is_none() && args.save.is_none() {
+        println!("frame rate: {rate} Hz (0 = no cap)");
+        println!("exposure: {exposure} us");
+        println!("auto exposure: {auto}");
+        return Ok(ExitCode::SUCCESS);
+    }
+    if let Some(hz) = args.frame_rate {
+        cam.set_frame_rate(hz)?;
+        println!("frame rate: {} Hz (was {rate})", show(cam.frame_rate()));
+    }
+    if let Some(mode) = args.auto_exposure {
+        cam.set_auto_exposure(mode == OnOff::On)?;
+        println!("auto exposure: {} (was {auto})", on_off(cam.auto_exposure()));
+    }
+    if let Some(us) = args.exposure_us {
+        cam.set_auto_exposure(false)?;
+        cam.set_exposure_us(us)?;
+        println!("exposure: {} us (was {exposure}), auto exposure: {}", show(cam.exposure_us()), on_off(cam.auto_exposure()));
+    }
+    match args.save {
+        Some(group) => {
+            cam.save_parameter(group.team())?;
+            println!("saved to parameter group {group:?}: persisted, loaded again when the camera is next opened");
+        }
+        None => println!("not saved: the change is in RAM until the camera is reconfigured; add --save A|B|C|D to keep it"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+// ---------------------------------------------------------------------------
 // doctor
 // ---------------------------------------------------------------------------
 
@@ -872,6 +961,28 @@ mod tests {
         assert_eq!(file_stem_for("sb00"), "sb00");
         assert_eq!(file_stem_for("a b/c"), "a_b_c");
         assert_eq!(file_stem_for(""), "camera");
+    }
+
+    #[test]
+    fn set_args() {
+        let cli = Cli::try_parse_from([
+            "gcam-mvsdk-rs", "set", "sb00", "--frame-rate", "30", "--exposure-us", "5000", "--auto-exposure", "off",
+            "--save", "B",
+        ])
+        .unwrap();
+        let Command::Set(a) = cli.command else { panic!("not the set command") };
+        assert_eq!((a.camera.as_str(), a.frame_rate, a.exposure_us), ("sb00", Some(30), Some(5000.0)));
+        assert_eq!((a.auto_exposure, a.save), (Some(OnOff::Off), Some(Group::B)));
+        assert_eq!(a.save.map(Group::team), Some(ParameterTeam::B));
+        let cli = Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--auto-exposure", "on", "--save", "d"]).unwrap();
+        let Command::Set(a) = cli.command else { panic!("not the set command") };
+        assert_eq!((a.auto_exposure, a.save), (Some(OnOff::On), Some(Group::D)));
+        let cli = Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00"]).unwrap();
+        let Command::Set(a) = cli.command else { panic!("not the set command") };
+        assert!(a.frame_rate.is_none() && a.exposure_us.is_none() && a.auto_exposure.is_none() && a.save.is_none());
+        assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--auto-exposure", "maybe"]).is_err());
+        assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--save", "E"]).is_err());
+        assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set"]).is_err());
     }
 
     #[test]

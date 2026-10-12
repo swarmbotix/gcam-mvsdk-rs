@@ -37,7 +37,7 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `src/error.rs`: `MvError` (status + `CameraGetErrorString` text), `LoadError`, crate `Error`, `Result`.
 - `src/setup.rs` (feature `setup`): manifest parsing, HEAD/GET download, SHA-256, tar extraction, Windows installer branch.
 - `src/doctor.rs`: host checks (CAP_NET_RAW, rp_filter, firewall, NIC subnets).
-- `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | doctor`.
+- `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | set | doctor`.
 - `tests/`: struct sizes, status table, search path, manifest, setup/extraction, `capabilities_doc.rs` (document and example identical), `symbols.rs` (every named SDK function exists in a local SDK; skips without one); `tests/hw/` hardware tests.
 - `examples/capabilities.rs`: one compiled snippet per capability between `// [doc:name]` and `// [/doc]` markers; `docs/CAPABILITIES.md` shows exactly those regions.
 - `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay; the

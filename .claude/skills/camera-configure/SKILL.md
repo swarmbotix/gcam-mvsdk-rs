@@ -1,6 +1,6 @@
 ---
 name: camera-configure
-description: Change how a HuaTeng camera captures (exposure, auto exposure, gain, frame rate, trigger mode, ROI and binning, mirror and rotation, white balance) and optionally store the settings in a parameter group, using gcam-mvsdk-rs info to read ranges first and the library for the rest. Use when the user wants to tune or persist camera settings. Reads before it writes; saving needs confirmation.
+description: Change how a HuaTeng camera captures (exposure, auto exposure, gain, frame rate, trigger mode, ROI and binning, mirror and rotation, white balance) and optionally store the settings in a parameter group, using gcam-mvsdk-rs info to read ranges first, gcam-mvsdk-rs set for frame rate and exposure, and the library for the rest. Use when the user wants to tune or persist camera settings. Reads before it writes; saving needs confirmation.
 ---
 
 # camera-configure
@@ -30,8 +30,17 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
    sensor maximum, frame-rate cap and frame-speed tier, trigger mode, gamma, contrast, saturation,
    sharpness, mono or color, and the camera's preset resolutions, frame-speed tiers, packet sizes,
    output formats and trigger modes.
-2. **Settings the CLI can apply directly:** exposure for a capture, `gcam-mvsdk-rs grab sb00
-   --exposure-us 5000` (see camera-grab). Everything else goes through the library.
+2. **Frame rate, exposure and auto exposure: use the CLI first.** `set` applies only the options
+   given, reads each value back and prints it with the old value:
+   ```bash
+   gcam-mvsdk-rs set sb00                                  # print frame rate, exposure, auto exposure
+   gcam-mvsdk-rs set sb00 --frame-rate 30                  # cap at 30 Hz; 0 removes the cap (some GigE models only)
+   gcam-mvsdk-rs set sb00 --exposure-us 5000               # manual exposure; turns auto exposure off
+   gcam-mvsdk-rs set sb00 --auto-exposure on
+   gcam-mvsdk-rs set sb00 --frame-rate 30 --exposure-us 5000 --save B   # also store in group B
+   ```
+   Without `--save` the change stays in RAM. For a single capture, `grab --exposure-us` works too
+   (see camera-grab). Everything else goes through the library (step 3).
 3. **Library: use the template** `.claude/skills/camera-configure/configure.rs`. It prints the
    current values and ranges, applies the values in its `configure()` function with `--apply`,
    and stores them with `--save A|B|C|D`:
@@ -95,6 +104,6 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
 
 - Read before you write: run `info` (or the template without `--apply`) and show the user the
   current values first.
-- Confirm with the user before `save_parameter` on a production camera; it overwrites the stored
-  group that programs load next time.
+- Confirm with the user before `set --save` or `save_parameter` on a production camera; it
+  overwrites the stored group that programs load next time.
 - Do not change trigger mode or exposure on a camera a running publisher uses; stop it first.

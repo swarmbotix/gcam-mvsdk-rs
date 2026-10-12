@@ -51,6 +51,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let (Some(mtu), true) = (mtu, dev.is_gige()) {
         println!("GigE packet size: {} bytes", cam.set_gige_packet_size(mtu)?);
     }
+    let cap = match cam.frame_rate() {
+        Ok(hz) if hz > 0 => format!("cap {hz} Hz"),
+        Ok(_) => "cap none".to_string(),
+        Err(_) => "cap unknown".to_string(),
+    };
     highgui::named_window(WINDOW, highgui::WINDOW_NORMAL)?;
     cam.play()?;
 
@@ -76,7 +81,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
         let (w, h) = (info.width as i32, info.height as i32);
         let mut view = Mat::new_rows_cols_with_data_mut(h, w, &mut pixels[..info.len])?; // CV_8UC1, zero copy
-        let text = format!("{} fps", stamps.len());
+        // Frames returned by grab in the last second, over the time they span.
+        let span = now.duration_since(stamps[0]).as_secs_f64();
+        let fps = if span > 0.0 { (stamps.len() - 1) as f64 / span } else { 0.0 };
+        let text = format!("measured {fps:.1} fps, {cap}");
         for (shade, thickness) in [(0.0, 4), (255.0, 2)] {
             // Dark outline first, then light text, so the overlay reads on any background.
             let (font, color) = (imgproc::FONT_HERSHEY_SIMPLEX, Scalar::all(shade));

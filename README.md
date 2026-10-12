@@ -130,6 +130,7 @@ are found through the udev rules.
 | `gcam-mvsdk-rs setip <MAC> <IP> <MASK> <GW>` | Give a GigE camera a static address; works even when it is on the wrong subnet. Use `0.0.0.0` for no gateway. |
 | `gcam-mvsdk-rs info <NAME or SN>` | Exposure, gain, resolution, trigger, image settings and capabilities of one camera. |
 | `gcam-mvsdk-rs grab <NAME or SN> -n 3 -o frames/` | Save frames as PNG. `--exposure-us 5000` sets exposure; `--mtu 1500` fits the packet size to the NIC. |
+| `gcam-mvsdk-rs set <NAME or SN> --frame-rate 30 --exposure-us 5000 --save B` | Change the frame-rate cap (0 removes it), exposure, or `--auto-exposure on` / `off`, and print old and new values; `--save` stores them in parameter group A, B, C or D, otherwise they stay in RAM. Without options it prints the current values. |
 | `gcam-mvsdk-rs doctor` | Check the SDK, privileges, `rp_filter`, firewall, NIC subnets and camera addresses, and print the fix for each. |
 | `gcam-mvsdk-rs setup` | Download and verify the SDK (`install.bash` runs this for you). |
 
