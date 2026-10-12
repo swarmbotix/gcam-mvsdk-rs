@@ -163,6 +163,37 @@ differs from it. Facts about the SDK were checked against SDK 2.1.0.49 for Linux
 - **`Cargo.lock` is committed** (it is not ignored), so `cargo install --locked` and
   `cargo build --locked` reproduce the tested dependency versions.
 
+## Capabilities document and further controls
+
+- `docs/CAPABILITIES.md` follows the ten-section outline shared with `gcam-mvsdk-py`. Each item
+  states what it does, a use case, the vendor functions, ranges and defaults from the header
+  comments (or "model dependent"), the Rust API, and a snippet. Status counts: 32 wrapped, 1 partly
+  wrapped, 44 raw, plus the vendor GUI table.
+- Every snippet lives in `examples/capabilities.rs` between `// [doc:name]` and `// [/doc]`
+  markers. CI builds the example, `tests/capabilities_doc.rs` requires the document's Rust blocks
+  and the marked regions to be identical in both directions, and `tests/symbols.rs` resolves every
+  quoted vendor function name in a local SDK (it skips in CI, where no SDK is installed). The
+  example runs snippets by name; those that change settings need `--write`.
+- New safe methods live in `src/controls.rs` (a second `impl Camera` using only the public
+  `handle()` and `sdk()` plus the crate-private `get_i32`). 43 functions were added to the optional
+  part of `ffi::Api`, with `tSdkFrameEvent` (32 bytes, asserted) and the frame-event and
+  connection-status callback types.
+- `Resolution` gained a public `raw` field holding the SDK record, so `set_image_resolution` passes
+  a preset back exactly as the camera described it. This changes the struct's public fields
+  (acceptable before 1.0).
+- I/O uses `CameraSetIOStateEx` / `CameraGetIOStateEx` / `CameraGetOutPutIOStateEx` (1 high, 0 low
+  on every model); the header marks the functions without `Ex` obsolete because they invert the
+  level on GE and SUA models.
+- `set_roi` calls `CameraSetImageResolutionEx` with index 0xFF. The header does not say whether
+  width and height are counted before or after binning; the method documents this and the snippet
+  reads the resolution back.
+- `CameraWriteSN` is documented as dangerous and neither wrapped nor shown. `CameraSetParameterMask`
+  is shown with all bits set because the header names the type a mask without documenting the bit
+  layout. Callbacks stay raw until the planned safe callback wrapper.
+- Not verified on hardware: every new method and snippet. Only signatures (against the header) and
+  symbol presence (against `libMVSDK.so` 2.1.0.49) were checked; `tests/hw` has a read-only smoke
+  test for the new getters.
+
 ## OpenCV live view example
 
 - `examples/live_view.rs` uses `opencv` 0.101 (`default-features = false`, `highgui` and

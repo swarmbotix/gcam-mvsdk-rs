@@ -33,11 +33,13 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `src/ffi.rs`: `#[repr(C)]` structs, status codes and `STATUS_TABLE`, media types, text decoding (ASCII, else GBK), `Api` function table built by `define_api!`.
 - `src/sdk.rs`: platform/arch mapping, search path (`SearchConfig`, `resolve_library`), `Sdk` (load once, enumerate, GigE IP), `DeviceInfo`.
 - `src/camera.rs`: `Camera` (RAII, `CameraUnInit` on drop), `Frame` (releases its buffer on drop), `Capability`, enums.
+- `src/controls.rs`: further `impl Camera` controls (gain, AE target, trigger timing, ROI/binning, mirror, rotation, ISP levels, white balance, I/O, strobe, resend, parameter mode) and their enums.
 - `src/error.rs`: `MvError` (status + `CameraGetErrorString` text), `LoadError`, crate `Error`, `Result`.
 - `src/setup.rs` (feature `setup`): manifest parsing, HEAD/GET download, SHA-256, tar extraction, Windows installer branch.
 - `src/doctor.rs`: host checks (CAP_NET_RAW, rp_filter, firewall, NIC subnets).
 - `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | doctor`.
-- `tests/`: struct sizes, status table, search path, manifest, setup/extraction; `tests/hw/` hardware tests.
+- `tests/`: struct sizes, status table, search path, manifest, setup/extraction, `capabilities_doc.rs` (document and example identical), `symbols.rs` (every named SDK function exists in a local SDK; skips without one); `tests/hw/` hardware tests.
+- `examples/capabilities.rs`: one compiled snippet per capability between `// [doc:name]` and `// [/doc]` markers; `docs/CAPABILITIES.md` shows exactly those regions.
 - `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay; the
   only code that uses OpenCV.
 - `install.bash`: end-user installer. `scripts/fetch-sdk.sh`: SDK into `./vendor/`.
@@ -50,6 +52,7 @@ cargo build
 cargo test                                        # no SDK or hardware needed
 cargo clippy --all-targets -- -D warnings
 cargo build --no-default-features                 # library without CLI/downloader
+cargo build --example capabilities                # the snippets of docs/CAPABILITIES.md
 cargo publish --dry-run --allow-dirty --target-dir target/package-verify
 sh scripts/check-no-vendor-files.sh
 ./scripts/fetch-sdk.sh --from <tarball>           # SDK into ./vendor/ for cargo run
@@ -97,11 +100,14 @@ to `../gcam-mvsdk-py/sdk-manifest.toml`: edit both, then
    to `c_int`, `UINT` to `c_uint`, `char*` to `*mut c_char`, `BYTE*` to `*mut u8`, `double*` to `*mut f64`.
    New structs get `#[repr(C)]` and a size/offset assertion in `tests/struct_sizes.rs`, measured
    with gcc (`sizeof`, `offsetof`) in a scratch directory.
-3. Add a safe method in `src/camera.rs` (per-handle) or `src/sdk.rs` (global): resolve optional
+3. Add a safe method in `src/controls.rs` or `src/camera.rs` (per-handle) or `src/sdk.rs` (global): resolve optional
    pointers with `.ok_or(Error::Unsupported("CameraXxx"))?`, call inside `unsafe` with a
    `// SAFETY:` comment, convert the status with `self.check("CameraXxx", status)?`.
 4. Add a unit test for any pure logic, a hardware test in `tests/hw/main.rs` if it touches a
    camera, and expose it in the CLI only if users need it. See `.claude/skills/add-sdk-function/`.
+5. Update `docs/CAPABILITIES.md`: change the item from raw to wrapped, adjust the summary counts,
+   and replace its snippet in `examples/capabilities.rs`, pasting the identical code into the
+   document (`cargo test --test capabilities_doc` fails if they differ).
 
 ## Conventions
 

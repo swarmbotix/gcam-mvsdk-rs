@@ -22,6 +22,7 @@ jobs:
         with:
           components: clippy
       - run: cargo build --locked
+      - run: cargo build --locked --example capabilities
       - run: cargo test --locked
       - run: cargo clippy --locked --all-targets -- -D warnings
 

@@ -21,6 +21,7 @@ include = [
     "/src/**",
     "/tests/**",
     "/examples/**",
+    "/docs/CAPABILITIES.md",
 ]
 
 [lib]

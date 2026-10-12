@@ -114,6 +114,36 @@ fn rename_round_trip() {
 }
 
 #[test]
+fn control_getters_answer() {
+    // Read-only smoke test of the controls added for docs/CAPABILITIES.md: a wrong FFI
+    // signature would crash here. Models may reject a getter with an SDK status, which is fine.
+    require_hw!();
+    let _g = lock();
+    let sdk = sdk();
+    let dev = sdk.enumerate().expect("enumerate").into_iter().next().expect("at least one camera");
+    let cam = sdk.open(&dev).expect("open");
+    eprintln!("ae_target {:?}", cam.ae_target());
+    eprintln!("anti_flick {:?}", cam.anti_flick());
+    eprintln!("light_frequency {:?}", cam.light_frequency());
+    eprintln!("mirror h {:?}", cam.mirror(gcam_mvsdk_rs::MirrorDirection::Horizontal));
+    eprintln!("rotation {:?}", cam.rotation());
+    eprintln!("black_level {:?}", cam.black_level());
+    eprintln!("auto_white_balance {:?}", cam.auto_white_balance());
+    eprintln!("strobe_mode {:?}", cam.strobe_mode());
+    eprintln!("parameter_mode {:?}", cam.parameter_mode());
+    eprintln!("current_parameter_team {:?}", cam.current_parameter_team());
+    let cap = cam.capability().expect("capability");
+    if cap.input_io_count > 0 {
+        eprintln!("input 0 {:?}", cam.input_io_state(0));
+    }
+    if cap.output_io_count > 0 {
+        eprintln!("output 0 {:?}", cam.output_io_state(0));
+    }
+    let res = cam.image_resolution().expect("image_resolution");
+    cam.set_image_resolution(&res).expect("re-applying the current resolution");
+}
+
+#[test]
 fn grab_produces_mono8_frame() {
     require_hw!();
     let _g = lock();

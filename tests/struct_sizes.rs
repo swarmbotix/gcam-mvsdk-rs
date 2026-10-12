@@ -97,6 +97,14 @@ fn descriptor_layouts() {
 }
 
 #[test]
+fn frame_event_layout() {
+    assert_eq!(size_of::<tSdkFrameEvent>(), 32);
+    assert_eq!(offset_of!(tSdkFrameEvent, uFrameID), 8);
+    assert_eq!(offset_of!(tSdkFrameEvent, TimeStampL), 24);
+    assert_eq!(offset_of!(tSdkFrameEvent, TimeStampH), 28);
+}
+
+#[test]
 fn camera_is_send_but_not_sync() {
     fn assert_send<T: Send>() {}
     assert_send::<gcam_mvsdk_rs::Camera>();

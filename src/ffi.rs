@@ -40,6 +40,15 @@ pub type CameraSnapProc = Option<
     ),
 >;
 
+/// Frame event callback type used by `CameraSetFrameEventCallback`.
+pub type CameraFrameEventCallback =
+    Option<unsafe extern "system" fn(hCamera: CameraHandle, pEvent: *mut tSdkFrameEvent, pContext: *mut c_void)>;
+
+/// Connection status callback type used by `CameraSetConnectionStatusCallback`.
+/// `MSG` is 0 when the connection is lost and 1 when it is restored.
+pub type CameraConnectionStatusCallback =
+    Option<unsafe extern "system" fn(hCamera: CameraHandle, MSG: c_uint, uParam: c_uint, pContext: *mut c_void)>;
+
 // ---------------------------------------------------------------------------
 // Status codes
 // ---------------------------------------------------------------------------
@@ -429,6 +438,24 @@ pub struct tSdkFrameStatistic {
     pub iLost: c_int,
 }
 
+/// Frame event passed to a `CameraSetFrameEventCallback` callback (32 bytes).
+#[repr(C)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub struct tSdkFrameEvent {
+    /// 1: frame start, 2: frame end.
+    pub uType: c_uint,
+    /// 0: success, otherwise an error.
+    pub uStatus: c_uint,
+    pub uFrameID: c_uint,
+    pub uWidth: c_uint,
+    pub uHeight: c_uint,
+    pub uPixelFormat: c_uint,
+    /// Low 32 bits of the time stamp.
+    pub TimeStampL: c_uint,
+    /// High 32 bits of the time stamp.
+    pub TimeStampH: c_uint,
+}
+
 #[repr(C)]
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub struct tSdkMediaType {
@@ -792,6 +819,84 @@ define_api! {
         fn CameraAlignMalloc(size: c_int, align: c_int) -> *mut u8;
         /// Frees a buffer from `CameraAlignMalloc`.
         fn CameraAlignFree(membuffer: *mut u8);
+        /// Sets the analog gain in SDK units (factor = value x `sExposeDesc.fAnalogGainStep`).
+        fn CameraSetAnalogGain(hCamera: CameraHandle, iAnalogGain: c_int) -> CameraSdkStatus;
+        /// Sets the auto-exposure brightness target.
+        fn CameraSetAeTarget(hCamera: CameraHandle, iAeTarget: c_int) -> CameraSdkStatus;
+        /// Reads the auto-exposure brightness target.
+        fn CameraGetAeTarget(hCamera: CameraHandle, piAeTarget: *mut c_int) -> CameraSdkStatus;
+        /// Sets the digital R, G, B gains (factor = value / 100).
+        fn CameraSetGain(hCamera: CameraHandle, iRGain: c_int, iGGain: c_int, iBGain: c_int) -> CameraSdkStatus;
+        /// Sets the number of frames captured per trigger.
+        fn CameraSetTriggerCount(hCamera: CameraHandle, iCount: c_int) -> CameraSdkStatus;
+        /// Sets the hardware-trigger delay in microseconds.
+        fn CameraSetTriggerDelayTime(hCamera: CameraHandle, uDelayTimeUs: c_uint) -> CameraSdkStatus;
+        /// Selects a resolution (preset table entry or custom).
+        fn CameraSetImageResolution(hCamera: CameraHandle, pImageResolution: *mut tSdkImageResolution) -> CameraSdkStatus;
+        /// Selects a preset (`iIndex`) or a custom ROI (`iIndex` = 0xFF) with binning, skipping or resampling.
+        fn CameraSetImageResolutionEx(hCamera: CameraHandle, iIndex: c_int, Mode: c_int, ModeSize: c_uint, x: c_int, y: c_int, width: c_int, height: c_int, ZoomWidth: c_int, ZoomHeight: c_int) -> CameraSdkStatus;
+        /// Enables or disables the ISP mirror in one direction (0 horizontal, 1 vertical).
+        fn CameraSetMirror(hCamera: CameraHandle, iDir: c_int, bEnable: c_int) -> CameraSdkStatus;
+        /// Reads the ISP mirror state for one direction.
+        fn CameraGetMirror(hCamera: CameraHandle, iDir: c_int, pbEnable: *mut c_int) -> CameraSdkStatus;
+        /// Sets the counterclockwise rotation (0 none, 1: 90, 2: 180, 3: 270 degrees).
+        fn CameraSetRotate(hCamera: CameraHandle, iRot: c_int) -> CameraSdkStatus;
+        /// Reads the rotation.
+        fn CameraGetRotate(hCamera: CameraHandle, iRot: *mut c_int) -> CameraSdkStatus;
+        /// Sets gamma (effective in the parameter-generated LUT mode).
+        fn CameraSetGamma(hCamera: CameraHandle, iGamma: c_int) -> CameraSdkStatus;
+        /// Sets contrast (effective in the parameter-generated LUT mode).
+        fn CameraSetContrast(hCamera: CameraHandle, iContrast: c_int) -> CameraSdkStatus;
+        /// Sets saturation (100 = unchanged; no effect on mono cameras).
+        fn CameraSetSaturation(hCamera: CameraHandle, iSaturation: c_int) -> CameraSdkStatus;
+        /// Sets sharpening (0 disables).
+        fn CameraSetSharpness(hCamera: CameraHandle, iSharpness: c_int) -> CameraSdkStatus;
+        /// Sets the black level (0 to 255, default 0).
+        fn CameraSetBlackLevel(hCamera: CameraHandle, iBlackLevel: c_int) -> CameraSdkStatus;
+        /// Reads the black level.
+        fn CameraGetBlackLevel(hCamera: CameraHandle, piBlackLevel: *mut c_int) -> CameraSdkStatus;
+        /// Selects automatic (1) or manual (0) white balance.
+        fn CameraSetWbMode(hCamera: CameraHandle, bAuto: c_int) -> CameraSdkStatus;
+        /// Reads the white-balance mode.
+        fn CameraGetWbMode(hCamera: CameraHandle, pbAuto: *mut c_int) -> CameraSdkStatus;
+        /// Runs one manual white balance on the next frame.
+        fn CameraSetOnceWB(hCamera: CameraHandle) -> CameraSdkStatus;
+        /// Enables anti-flicker for automatic exposure.
+        fn CameraSetAntiFlick(hCamera: CameraHandle, bEnable: c_int) -> CameraSdkStatus;
+        /// Reads the anti-flicker state.
+        fn CameraGetAntiFlick(hCamera: CameraHandle, pbEnable: *mut c_int) -> CameraSdkStatus;
+        /// Selects the mains frequency for anti-flicker (0: 50 Hz, 1: 60 Hz).
+        fn CameraSetLightFrequency(hCamera: CameraHandle, iFrequencySel: c_int) -> CameraSdkStatus;
+        /// Reads the mains frequency selection.
+        fn CameraGetLightFrequency(hCamera: CameraHandle, piFrequencySel: *mut c_int) -> CameraSdkStatus;
+        /// Sets how often a GigE camera resends an unacknowledged frame in trigger mode (<= 0 disables).
+        fn CameraSetFrameResendCount(hCamera: CameraHandle, count: c_int) -> CameraSdkStatus;
+        /// Selects where parameter groups are stored (`emSdkParameterMode`).
+        fn CameraSetParameterMode(hCamera: CameraHandle, iMode: c_int) -> CameraSdkStatus;
+        /// Reads where parameter groups are stored.
+        fn CameraGetParameterMode(hCamera: CameraHandle, piTarget: *mut c_int) -> CameraSdkStatus;
+        /// Reads the currently selected parameter group.
+        fn CameraGetCurrentParameterGroup(hCamera: CameraHandle, piTeam: *mut c_int) -> CameraSdkStatus;
+        /// Sets the STROBE output mode (`emStrobeControl`).
+        fn CameraSetStrobeMode(hCamera: CameraHandle, iMode: c_int) -> CameraSdkStatus;
+        /// Reads the STROBE output mode.
+        fn CameraGetStrobeMode(hCamera: CameraHandle, piMode: *mut c_int) -> CameraSdkStatus;
+        /// Sets the STROBE active level (0 low, 1 high).
+        fn CameraSetStrobePolarity(hCamera: CameraHandle, uPolarity: c_int) -> CameraSdkStatus;
+        /// Sets the STROBE delay after the trigger in microseconds.
+        fn CameraSetStrobeDelayTime(hCamera: CameraHandle, uDelayTimeUs: c_uint) -> CameraSdkStatus;
+        /// Sets the STROBE pulse width in microseconds.
+        fn CameraSetStrobePulseWidth(hCamera: CameraHandle, uTimeUs: c_uint) -> CameraSdkStatus;
+        /// Sets an output line (1 high, 0 low, the same on every model).
+        fn CameraSetIOStateEx(hCamera: CameraHandle, iOutputIOIndex: c_int, uState: c_uint) -> CameraSdkStatus;
+        /// Reads an input line (1 high, 0 low).
+        fn CameraGetIOStateEx(hCamera: CameraHandle, iInputIOIndex: c_int, puState: *mut c_uint) -> CameraSdkStatus;
+        /// Reads the level of an output line (1 high, 0 low).
+        fn CameraGetOutPutIOStateEx(hCamera: CameraHandle, iOutputIOIndex: c_int, puState: *mut c_uint) -> CameraSdkStatus;
+        /// Installs a frame start/end event callback.
+        fn CameraSetFrameEventCallback(hCamera: CameraHandle, pCallBack: CameraFrameEventCallback, pContext: *mut c_void) -> CameraSdkStatus;
+        /// Installs a connection lost/restored callback.
+        fn CameraSetConnectionStatusCallback(hCamera: CameraHandle, pCallBack: CameraConnectionStatusCallback, pContext: *mut c_void) -> CameraSdkStatus;
     }
 }
 

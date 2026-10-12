@@ -77,7 +77,15 @@ cargo test && cargo clippy --all-targets -- -D warnings
 GCAM_MVSDK_HW_TEST=1 cargo test --test hw -- --nocapture --test-threads=1   # on the bench
 ```
 
-## 5. Optional: CLI
+## 5. Capabilities document
+
+If the function belongs to an item of `docs/CAPABILITIES.md`, mark the item wrapped (or partly
+wrapped), update the summary table counts, and rewrite its `// [doc:name]` region in
+`examples/capabilities.rs` to use the new safe method. Paste the identical code into the document;
+`cargo test --test capabilities_doc` compares the two, and `cargo test --test symbols` checks every
+quoted function name against a local SDK.
+
+## 6. Optional: CLI
 
 Expose it in `src/main.rs` only if users need it (for example a new line in `info`). Update the
 README command table when a command or flag changes.

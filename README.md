@@ -223,6 +223,24 @@ Two things your program needs at run time, on every machine it runs on, exactly 
 2. `CAP_NET_RAW` for GigE discovery: `sudo setcap cap_net_raw,cap_net_admin+ep target/release/your-binary`
    after each build, or run it with `sudo -E`.
 
+## What the SDK can change
+
+[docs/CAPABILITIES.md](docs/CAPABILITIES.md) lists everything the vendor SDK can read and change on a
+camera, in ten sections: identity and network, exposure and gain, frame rate and trigger, image
+geometry, image processing, digital I/O and strobe, GigE transport, parameter storage, callbacks,
+and the vendor GUI functions. Each entry gives a typical use case, the vendor function names, whether
+`gcam-mvsdk-rs` has a safe method for it, and a Rust snippet. Every snippet is compiled from
+`examples/capabilities.rs`, which can also run them against a camera:
+
+```bash
+cargo run --example capabilities -- sb00                    # list the snippets
+cargo run --example capabilities -- sb00 gige_ip read_sn    # read-only ones
+cargo run --example capabilities -- sb00 --write exposure   # ones that change settings
+```
+
+What a particular camera supports, and in what range, depends on the model:
+`gcam-mvsdk-rs info <NAME or SN>` prints its capabilities.
+
 ## Live view
 
 A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). OpenCV cannot be

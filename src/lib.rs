@@ -38,6 +38,7 @@
 //! [`Sdk::api`] for functions that have no safe wrapper yet.
 
 pub mod camera;
+pub mod controls;
 pub mod doctor;
 pub mod error;
 pub mod ffi;
@@ -46,5 +47,6 @@ pub mod sdk;
 pub mod setup;
 
 pub use camera::*;
+pub use controls::*;
 pub use error::*;
 pub use sdk::*;

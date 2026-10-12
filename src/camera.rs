@@ -128,13 +128,26 @@ pub enum ParameterTeam {
 }
 
 impl ParameterTeam {
-    fn code(self) -> c_int {
+    /// SDK value (`emSdkParameterTeam`): 0 to 3 for A to D, 0xFF for defaults.
+    pub fn code(self) -> c_int {
         match self {
             ParameterTeam::A => ffi::PARAMETER_TEAM_A,
             ParameterTeam::B => ffi::PARAMETER_TEAM_B,
             ParameterTeam::C => ffi::PARAMETER_TEAM_C,
             ParameterTeam::D => ffi::PARAMETER_TEAM_D,
             ParameterTeam::Default => ffi::PARAMETER_TEAM_DEFAULT,
+        }
+    }
+
+    /// Maps an SDK value back to a team.
+    pub fn from_code(code: c_int) -> Option<Self> {
+        match code {
+            ffi::PARAMETER_TEAM_A => Some(ParameterTeam::A),
+            ffi::PARAMETER_TEAM_B => Some(ParameterTeam::B),
+            ffi::PARAMETER_TEAM_C => Some(ParameterTeam::C),
+            ffi::PARAMETER_TEAM_D => Some(ParameterTeam::D),
+            ffi::PARAMETER_TEAM_DEFAULT => Some(ParameterTeam::Default),
+            _ => None,
         }
     }
 }
@@ -177,6 +190,10 @@ pub struct Resolution {
     pub bin_sum_mode: u32,
     pub bin_average_mode: u32,
     pub skip_mode: u32,
+    /// The SDK record this entry was decoded from. [`Camera::set_image_resolution`]
+    /// passes it back unchanged, so a preset from [`Capability::image_sizes`]
+    /// is selected exactly as the camera described it.
+    pub raw: ffi::tSdkImageResolution,
 }
 
 impl From<&ffi::tSdkImageResolution> for Resolution {
@@ -193,6 +210,7 @@ impl From<&ffi::tSdkImageResolution> for Resolution {
             bin_sum_mode: r.uBinSumMode,
             bin_average_mode: r.uBinAverageMode,
             skip_mode: r.uSkipMode,
+            raw: *r,
         }
     }
 }
@@ -310,7 +328,7 @@ unsafe fn copy_table<T: Copy>(ptr: *const T, n: c_int) -> Vec<T> {
     std::slice::from_raw_parts(ptr, n.min(MAX_TABLE_LEN) as usize).to_vec()
 }
 
-type GetI32 = unsafe extern "system" fn(CameraHandle, *mut c_int) -> CameraSdkStatus;
+pub(crate) type GetI32 = unsafe extern "system" fn(CameraHandle, *mut c_int) -> CameraSdkStatus;
 
 /// An open camera. Dropping it calls `CameraUnInit`.
 ///
@@ -375,7 +393,7 @@ impl Camera {
         self.sdk.check(function, status)
     }
 
-    fn get_i32(&self, function: &'static str, f: Option<GetI32>) -> Result<i32> {
+    pub(crate) fn get_i32(&self, function: &'static str, f: Option<GetI32>) -> Result<i32> {
         let f = f.ok_or(Error::Unsupported(function))?;
         let mut v: c_int = 0;
         // SAFETY: open handle and valid out pointer.
@@ -935,6 +953,15 @@ mod tests {
         assert_eq!(OutputFormat::Rgba8.bytes_per_pixel(), Some(4));
         assert_eq!(OutputFormat::Mono16.bytes_per_pixel(), Some(2));
         assert_eq!(OutputFormat::Other(0x0100_0001).bytes_per_pixel(), None);
+    }
+
+    #[test]
+    fn parameter_team_codes() {
+        for t in [ParameterTeam::A, ParameterTeam::B, ParameterTeam::C, ParameterTeam::D, ParameterTeam::Default] {
+            assert_eq!(ParameterTeam::from_code(t.code()), Some(t));
+        }
+        assert_eq!(ParameterTeam::Default.code(), 0xff);
+        assert_eq!(ParameterTeam::from_code(7), None);
     }
 
     #[test]
