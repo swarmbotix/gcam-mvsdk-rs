@@ -511,7 +511,6 @@ gcam-mvsdk-rs list
 
 ## For developers
 
-- Design and background: [PLAN_RUST_WRAPPER.md](PLAN_RUST_WRAPPER.md)
 - Conventions, layout and procedures for working on this repository: [CLAUDE.md](CLAUDE.md)
 - Vendor SDK manual (English, SDK 2.1.0.49): [docs/LinuxSDK_Document_V2.1.0.49.pdf](docs/LinuxSDK_Document_V2.1.0.49.pdf),
   taken from the Linux SDK archive on HuaTeng's download page, http://huatengvision.com/download/1/,

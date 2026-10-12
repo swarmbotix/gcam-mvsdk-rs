@@ -1502,7 +1502,7 @@ fn data_directory(c: &Ctx) -> R {
 - **What it does:** Calls a function for every frame instead of polling with `grab`.
 - **Use case:** Push frames into a queue with the lowest latency the SDK offers.
 - **Vendor functions:** `CameraSetCallbackFunction`
-- **Note:** The safe callback wrapper is planned (`PLAN_RUST_WRAPPER.md`, second iteration).
+- **Note:** A safe callback wrapper is not implemented yet; polling `grab` covers the current use cases.
 - **Rust:** raw (`Sdk::api().CameraSetCallbackFunction`)
 
 ```rust

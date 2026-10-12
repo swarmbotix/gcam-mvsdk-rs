@@ -15,7 +15,6 @@ include = [
     "/LICENSE",
     "/LICENSE-MIT",
     "/LICENSE-APACHE",
-    "/IMPLEMENTATION_NOTES.md",
     "/sdk-manifest.toml",
     "/scripts/**",
     "/src/**",
