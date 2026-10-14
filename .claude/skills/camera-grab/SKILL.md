@@ -15,7 +15,7 @@ description: Save frames from one HuaTeng camera as PNG with gcam-mvsdk-rs grab,
 
 - camera-list shows the camera and no WARNING for its subnet.
 - No other program streams from the camera (stop publishers first).
-- GigE: `CAP_NET_RAW` or `sudo -E`; for full frame rate also the `rmem_max` fix from the README.
+- GigE, for full frame rate: the `rmem_max` fix from the README.
 
 ## Steps
 

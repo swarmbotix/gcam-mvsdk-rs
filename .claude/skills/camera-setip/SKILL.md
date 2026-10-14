@@ -19,7 +19,6 @@ If the camera does not appear in `list` at all, use **camera-discovery** first: 
 ## Prerequisites
 
 - The camera appears in `gcam-mvsdk-rs list` (its MAC is on the `Camera` line).
-- GigE: `CAP_NET_RAW` or `sudo -E`.
 
 ## Steps
 

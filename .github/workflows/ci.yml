@@ -37,3 +37,4 @@ jobs:
         with:
           components: clippy
       - run: cargo clippy --locked --features view --example live_view -- -D warnings
+      - run: cargo test --locked --features view --example live_view

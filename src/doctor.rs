@@ -1,7 +1,7 @@
 //! Host diagnostics behind `gcam-mvsdk-rs doctor`.
 //!
 //! GigE Vision discovery is a UDP broadcast answered by every camera on the
-//! same L2 segment. The vendor documentation requires root or `CAP_NET_RAW`,
+//! same L2 segment. It works from an unprivileged process; what it needs is
 //! `net.ipv4.conf.all.rp_filter=0`, an open firewall for UDP 3956 and the
 //! stream, and a host NIC with a static address in the camera subnet. The
 //! checks here detect and explain those conditions; they change nothing.
@@ -147,56 +147,6 @@ fn read_mtu(name: &str) -> Option<u32> {
         .and_then(|s| s.trim().parse().ok())
 }
 
-/// Linux capability number of `CAP_NET_ADMIN`.
-pub const CAP_NET_ADMIN: u32 = 12;
-/// Linux capability number of `CAP_NET_RAW`.
-pub const CAP_NET_RAW: u32 = 13;
-
-/// Parses the `CapEff:` line of `/proc/<pid>/status`.
-pub fn parse_cap_eff(status: &str) -> Option<u64> {
-    status
-        .lines()
-        .find_map(|l| l.strip_prefix("CapEff:"))
-        .and_then(|v| u64::from_str_radix(v.trim(), 16).ok())
-}
-
-/// Whether the process may open raw sockets (root or `CAP_NET_RAW`).
-pub fn privilege_check() -> Check {
-    #[cfg(unix)]
-    {
-        // SAFETY: geteuid has no preconditions.
-        let euid = unsafe { libc::geteuid() };
-        if euid == 0 {
-            return Check::new(Level::Ok, "running as root");
-        }
-        let caps = std::fs::read_to_string("/proc/self/status").ok().and_then(|s| parse_cap_eff(&s));
-        let has = |bit: u32| caps.map(|c| c & (1u64 << bit) != 0).unwrap_or(false);
-        if has(CAP_NET_RAW) {
-            let mut c = Check::new(Level::Ok, "process has CAP_NET_RAW");
-            if !has(CAP_NET_ADMIN) {
-                c = c.with("CAP_NET_ADMIN is not set; the vendor recommends both capabilities");
-            }
-            return c;
-        }
-        let exe = std::env::current_exe()
-            .map(|p| p.display().to_string())
-            .unwrap_or_else(|_| "$(which gcam-mvsdk-rs)".to_string());
-        Check::new(Level::Warn, "neither root nor CAP_NET_RAW: GigE discovery may find no cameras")
-            .with(format!("Fix once: sudo setcap cap_net_raw,cap_net_admin+ep {exe}"))
-            .with("or run the command with sudo -E (keeps GCAM_MVSDK_HOME and GCAM_MVSDK_DIR).")
-            .with("Capabilities set on a file under target/ are lost when cargo rebuilds it.")
-    }
-    #[cfg(windows)]
-    {
-        Check::new(Level::Info, "Windows: GigE access goes through the vendor's filter driver")
-            .with("Install it once with the vendor installer (see `gcam-mvsdk-rs setup`).")
-    }
-    #[cfg(not(any(unix, windows)))]
-    {
-        Check::new(Level::Info, "privilege check not implemented on this platform")
-    }
-}
-
 fn read_sysctl(path: &str) -> Option<u32> {
     std::fs::read_to_string(path).ok().and_then(|s| s.trim().parse().ok())
 }
@@ -296,7 +246,7 @@ pub fn nic_check(ifaces: &[Interface]) -> Check {
 /// All host checks that do not need the SDK.
 pub fn system_checks() -> Vec<Check> {
     let ifaces = interfaces();
-    let mut out = vec![privilege_check()];
+    let mut out = Vec::new();
     if cfg!(target_os = "linux") {
         out.push(rp_filter_check(&ifaces));
     }
@@ -308,16 +258,6 @@ pub fn system_checks() -> Vec<Check> {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn cap_eff_parsing() {
-        let status = "Name:\tx\nCapInh:\t0000000000000000\nCapEff:\t0000000000003000\n";
-        let caps = parse_cap_eff(status).unwrap();
-        assert!(caps & (1 << CAP_NET_RAW) != 0);
-        assert!(caps & (1 << CAP_NET_ADMIN) != 0);
-        assert_eq!(parse_cap_eff("CapEff:\t0000000000000000"), Some(0));
-        assert_eq!(parse_cap_eff("nothing"), None);
-    }
 
     #[test]
     fn masks() {

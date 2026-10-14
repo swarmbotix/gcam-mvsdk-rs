@@ -36,12 +36,16 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `src/controls.rs`: further `impl Camera` controls (gain, AE target, trigger timing, ROI/binning, mirror, rotation, ISP levels, white balance, I/O, strobe, resend, parameter mode) and their enums.
 - `src/error.rs`: `MvError` (status + `CameraGetErrorString` text), `LoadError`, crate `Error`, `Result`.
 - `src/setup.rs` (feature `setup`): manifest parsing, HEAD/GET download, SHA-256, tar extraction, Windows installer branch.
-- `src/doctor.rs`: host checks (CAP_NET_RAW, rp_filter, firewall, NIC subnets).
+- `src/doctor.rs`: host checks (rp_filter, firewall, NIC subnets).
 - `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | set | doctor`.
 - `tests/`: struct sizes, status table, search path, manifest, setup/extraction, `capabilities_doc.rs` (document and example identical), `symbols.rs` (every named SDK function exists in a local SDK; skips without one); `tests/hw/` hardware tests.
 - `examples/capabilities.rs`: one compiled snippet per capability between `// [doc:name]` and `// [/doc]` markers; `docs/CAPABILITIES.md` shows exactly those regions.
-- `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay; the
-  only code that uses OpenCV.
+- `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay and
+  recording (`r` starts, `c` stops, `q` quits; `rate_hz` PNG images per second for `duration_s`
+  seconds into `<sdk home>/data/<YYYYMMDD_HHMMSS>_<camera>/N.png`); the only code that uses OpenCV.
+  Its options are `examples/record.yaml` (same content as the Python repository's copy); its
+  unit tests (keys, config, sampling) live in the file and run with
+  `cargo test --features view --example live_view`.
 - `install.bash`: end-user installer. `scripts/fetch-sdk.sh`: SDK into `./vendor/`.
 - `sdk-manifest.toml`: known vendor releases.
 - `.claude/skills/`: task guides, each a `SKILL.md`. Using the driver: `camera-list`,
@@ -63,10 +67,11 @@ sh scripts/check-no-vendor-files.sh
 ./scripts/fetch-sdk.sh --from <tarball>           # SDK into ./vendor/ for cargo run
 GCAM_MVSDK_HW_TEST=1 cargo test --test hw -- --nocapture   # bench machine only
 cargo clippy --features view --example live_view -- -D warnings   # needs libopencv-dev clang libclang-dev
+cargo test --features view --example live_view                    # the example's own tests, same requirement
 ```
 
 Without `--features view` every command above skips the example, so none of them needs OpenCV;
-the CI job `example-view` installs OpenCV and is the build check for the example.
+the CI job `example-view` installs OpenCV and runs the clippy and test commands for the example.
 
 All of these must pass before work is considered done. Run the publish dry run with its own
 `--target-dir`: with the shared target directory, its verification build overwrites the

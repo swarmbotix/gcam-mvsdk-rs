@@ -36,8 +36,9 @@ required-features = ["cli"]
 name = "hw"
 path = "tests/hw/main.rs"
 
-# OpenCV live view. Needs OpenCV and libclang at build time, so it is built only with
-# `--features view`; every other target builds without OpenCV installed.
+# OpenCV live view with recording (keys r, c, q; options in examples/record.yaml). Needs OpenCV
+# and libclang at build time, so it is built only with `--features view`; every other target
+# builds without OpenCV installed. Its tests: `cargo test --features view --example live_view`.
 [[example]]
 name = "live_view"
 path = "examples/live_view.rs"
@@ -49,8 +50,8 @@ default = ["cli"]
 setup = ["dep:ureq", "dep:flate2", "dep:tar", "dep:sha2", "dep:toml", "dep:humantime"]
 # The `gcam-mvsdk-rs` command-line tool.
 cli = ["setup", "dep:clap", "dep:png"]
-# OpenCV for the `live_view` example (not used by the library or the CLI).
-view = ["dep:opencv"]
+# OpenCV, YAML and local time for the `live_view` example (not used by the library or the CLI).
+view = ["dep:opencv", "dep:serde_yaml_ng", "dep:chrono"]
 
 [dependencies]
 libloading = "0.8"
@@ -67,7 +68,9 @@ toml = { version = "0.9", default-features = false, features = ["parse", "serde"
 humantime = { version = "2", optional = true }
 clap = { version = "4.5", features = ["derive"], optional = true }
 png = { version = "0.18", optional = true }
-opencv = { version = "0.101", default-features = false, features = ["highgui", "imgproc"], optional = true }
+opencv = { version = "0.101", default-features = false, features = ["highgui", "imgcodecs", "imgproc"], optional = true }
+serde_yaml_ng = { version = "0.10", optional = true }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"], optional = true }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"

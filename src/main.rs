@@ -79,7 +79,7 @@ enum Command {
     Grab(GrabArgs),
     /// Change frame rate and exposure of one camera; without options, print them
     Set(SetArgs),
-    /// Check the SDK installation, privileges and network configuration
+    /// Check the SDK installation and the host network configuration
     Doctor,
 }
 
@@ -309,7 +309,7 @@ fn report_library(version_dir: &Path, library: Option<&Path>) {
             udev.display()
         );
     }
-    println!("GigE discovery needs root or CAP_NET_RAW; run `gcam-mvsdk-rs doctor` to check the host.");
+    println!("Run `gcam-mvsdk-rs doctor` to check the host network settings for GigE discovery.");
 }
 
 // ---------------------------------------------------------------------------
@@ -357,9 +357,7 @@ fn cmd_list(sdk: &Sdk, as_json: bool, no_open: bool) -> Result<ExitCode> {
 
     if devs.is_empty() {
         println!("No cameras found. Check cable, power, and that the host NIC is on the same subnet.");
-        if doctor::privilege_check().level >= Level::Warn {
-            println!("This process has neither root nor CAP_NET_RAW, which GigE discovery needs; see `gcam-mvsdk-rs doctor`.");
-        }
+        println!("`gcam-mvsdk-rs doctor` checks rp_filter, the firewall and the NIC subnets.");
         return Ok(ExitCode::SUCCESS);
     }
     println!("\nFound {} camera(s)\n", devs.len());
@@ -894,7 +892,7 @@ fn camera_checks(sdk: &Sdk) -> Vec<Check> {
     if devs.is_empty() {
         out.push(
             Check::new(Level::Warn, "no cameras found")
-                .with("Check power and cabling, the privilege, rp_filter and firewall findings above,")
+                .with("Check power and cabling, the rp_filter and firewall findings above,")
                 .with("and that a host NIC has an address in the camera subnet."),
         );
         return out;

@@ -8,7 +8,6 @@
 //!     cargo run --release -- <NAME_OR_SN>                    # read only
 //!     cargo run --release -- <NAME_OR_SN> --apply            # apply the values in configure()
 //!     cargo run --release -- <NAME_OR_SN> --apply --save B   # and store them in parameter group B
-//! GigE discovery needs CAP_NET_RAW: sudo setcap cap_net_raw,cap_net_admin+ep target/release/cam-config
 
 use std::error::Error;
 

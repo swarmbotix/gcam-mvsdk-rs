@@ -18,7 +18,6 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
 
 - camera-list shows the camera; no other program streams from it.
 - For library use: a Rust toolchain and this repository (or `gcam-mvsdk-rs` as a dependency).
-- GigE: `CAP_NET_RAW` on the binary that opens the camera, or `sudo -E`.
 
 ## Steps
 
@@ -50,7 +49,6 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
    cp /path/to/gcam-mvsdk-rs/.claude/skills/camera-configure/configure.rs src/main.rs
    # edit configure() in src/main.rs, then:
    cargo build --release
-   sudo setcap cap_net_raw,cap_net_admin+ep target/release/cam-config   # GigE, after each build
    ./target/release/cam-config sb00                    # read only
    ./target/release/cam-config sb00 --apply            # apply for this session
    ./target/release/cam-config sb00 --apply --save B   # apply and store in group B

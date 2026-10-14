@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # install.bash: install the gcam-mvsdk-rs command and the HuaTeng Vision MVSDK for this user.
 #
-#   bash install.bash                 # build, install, download + verify the SDK, set capabilities
+#   bash install.bash                 # build, install, download + verify the SDK
 #   bash install.bash --from FILE     # use an SDK archive downloaded by hand (air-gapped machines)
 #   bash install.bash --no-sudo       # never call sudo; print the privileged commands instead
 #   bash install.bash --dev           # developer checkout: cargo build, SDK into ./vendor
@@ -202,18 +202,10 @@ step "Platform: ${OS_NAME}, ${MACHINE} (SDK library directory lib/${ARCH_DIR})"
 APT_PACKAGES=()
 if ! command -v cc >/dev/null 2>&1 && ! command -v gcc >/dev/null 2>&1; then APT_PACKAGES+=(build-essential); fi
 if ! command -v pkg-config >/dev/null 2>&1; then APT_PACKAGES+=(pkg-config); fi
-WANT_SETCAP=0
-if [[ $DEV -eq 0 ]]; then WANT_SETCAP=1; fi
-if [[ $WANT_SETCAP -eq 1 ]] && ! command -v setcap >/dev/null 2>&1 && [[ ! -x /sbin/setcap && ! -x /usr/sbin/setcap ]]; then
-    APT_PACKAGES+=(libcap2-bin)
-fi
 
 SUDO_PLAN=()
 if [[ ${#APT_PACKAGES[@]} -gt 0 && $DEBIAN_LIKE -eq 1 ]]; then
     SUDO_PLAN+=("apt-get install -y ${APT_PACKAGES[*]}")
-fi
-if [[ $WANT_SETCAP -eq 1 ]]; then
-    SUDO_PLAN+=("setcap cap_net_raw,cap_net_admin+ep ${CARGO_BIN}/${PKG}")
 fi
 if [[ $UDEV -eq 1 ]]; then
     SUDO_PLAN+=("cp ${SDK_HOME}/<version>/udev/*.rules /etc/udev/rules.d/ && udevadm control --reload-rules && udevadm trigger")
@@ -354,29 +346,8 @@ if [[ -n "${GCAM_MVSDK_DIR:-}" ]]; then
 fi
 
 # ---------------------------------------------------------------------------
-# Privileges for GigE discovery, USB udev rules
+# USB udev rules (GigE discovery needs no privileges)
 # ---------------------------------------------------------------------------
-
-SETCAP_CMD="setcap cap_net_raw,cap_net_admin+ep $BIN"
-step "GigE discovery privileges (CAP_NET_RAW)"
-GETCAP="$(command -v getcap || true)"
-for candidate in /usr/sbin/getcap /sbin/getcap; do
-    if [[ -z "$GETCAP" && -x "$candidate" ]]; then GETCAP="$candidate"; fi
-done
-if [[ $DEV -eq 1 ]]; then
-    info "skipped in --dev mode (capabilities on target/ binaries are lost on rebuild); use sudo -E or: sudo $SETCAP_CMD"
-elif [[ -n "$GETCAP" ]] && grep -q cap_net_raw <<<"$("$GETCAP" "$BIN" 2>/dev/null || true)"; then
-    info "already set on $BIN"
-elif [[ $SUDO_OK -eq 1 ]]; then
-    info "${SUDO:+sudo }$SETCAP_CMD"
-    if run_privileged setcap cap_net_raw,cap_net_admin+ep "$BIN"; then
-        info "done"
-    else
-        warn "setcap failed; run it yourself: sudo $SETCAP_CMD"
-    fi
-else
-    info "not set. GigE cameras are found only as root or with: sudo $SETCAP_CMD"
-fi
 
 step "USB udev rules"
 if [[ $UDEV -eq 0 ]]; then

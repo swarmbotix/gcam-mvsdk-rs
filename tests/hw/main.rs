@@ -1,7 +1,7 @@
 //! Hardware integration tests, for the bench machine with cameras attached.
 //!
-//! Every test returns immediately unless `GCAM_MVSDK_HW_TEST=1`. GigE
-//! discovery needs root or `CAP_NET_RAW` for the test binary.
+//! Every test returns immediately unless `GCAM_MVSDK_HW_TEST=1`. The tests
+//! run as a normal user; GigE discovery needs no privileges.
 //!
 //! ```text
 //! GCAM_MVSDK_HW_TEST=1 cargo test --test hw -- --nocapture
@@ -58,7 +58,7 @@ fn enumerate_finds_expected_cameras() {
     let _g = lock();
     let sdk = sdk();
     let devs = sdk.enumerate().expect("enumerate");
-    assert!(!devs.is_empty(), "no cameras found; check power, cabling, privileges (gcam-mvsdk-rs doctor)");
+    assert!(!devs.is_empty(), "no cameras found; check power, cabling, rp_filter and firewall (gcam-mvsdk-rs doctor)");
     let mut names = Vec::new();
     for d in &devs {
         assert!(!d.serial.is_empty());

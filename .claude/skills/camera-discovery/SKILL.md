@@ -1,6 +1,6 @@
 ---
 name: camera-discovery
-description: Troubleshoot HuaTeng cameras that gcam-mvsdk-rs does not find, explaining why `list` shows 0 cameras or misses one (privileges, rp_filter, firewall, subnet, cabling), with an unprivileged discovery probe. Use when cameras are missing or unreachable. For everyday listing use camera-list; to move or rename a camera use camera-setip or camera-rename.
+description: Troubleshoot HuaTeng cameras that gcam-mvsdk-rs does not find, explaining why `list` shows 0 cameras or misses one (rp_filter, firewall, subnet, cabling), with a standalone discovery probe. Use when cameras are missing or unreachable. For everyday listing use camera-list; to move or rename a camera use camera-setip or camera-rename.
 ---
 
 # camera-discovery
@@ -10,12 +10,13 @@ Related skills: **camera-list** (everyday listing and reading the output), **cam
 **sdk-setup** (SDK not found).
 
 GigE Vision discovery is a UDP broadcast (port 3956) on each host NIC, answered by every camera
-on the same L2 segment. Use the installed `gcam-mvsdk-rs`, or `cargo run -q --` in a checkout.
+on the same L2 segment. It needs no privileges: `gcam-mvsdk-rs` runs as a normal user, and `sudo`
+does not change the result. Use the installed `gcam-mvsdk-rs`, or `cargo run -q --` in a checkout.
 
 ## 1. Look
 
 ```bash
-gcam-mvsdk-rs doctor            # SDK, privileges, rp_filter, firewall, NICs, camera subnets
+gcam-mvsdk-rs doctor            # SDK, rp_filter, firewall, NICs, camera subnets
 gcam-mvsdk-rs list              # names, models, serials, camera and host NIC IP/MAC
 gcam-mvsdk-rs list --json       # for scripts; --no-open if another program is streaming
 ```
@@ -24,19 +25,16 @@ gcam-mvsdk-rs list --json       # for scripts; --no-open if another program is s
 
 Work through `doctor` findings in this order:
 
-1. **Privileges** (`neither root nor CAP_NET_RAW`): the SDK needs a raw socket. Either
-   `sudo setcap cap_net_raw,cap_net_admin+ep "$(command -v gcam-mvsdk-rs)"` (redo after each
-   reinstall; ignored on `nosuid` mounts) or run `sudo -E gcam-mvsdk-rs list`.
-   For a binary under `target/`, prefer `sudo -E`; rebuilding drops capabilities.
-2. **Is anything answering at all?** `python3 -I .claude/skills/camera-discovery/gvcp_probe.py`
-   sends one standard discovery broadcast without privileges and prints every camera that
-   replies (MAC, IP, model, serial, user name). Replies here but none in `list` means the SDK
-   lacks privileges or is filtered; no replies means power, cabling, or a different segment.
-3. **rp_filter** non-zero on the camera NIC: `sudo sysctl -w net.ipv4.conf.all.rp_filter=0 net.ipv4.conf.<nic>.rp_filter=0`.
-4. **Firewall** (ufw/firewalld active): allow UDP from the camera subnet.
-5. **Subnet**: `doctor` and `list` flag cameras whose IP is outside the host NIC subnet. The NIC
+1. **Is anything answering at all?** `python3 -I .claude/skills/camera-discovery/gvcp_probe.py`
+   sends one standard discovery broadcast, independent of the SDK, and prints every camera that
+   replies (MAC, IP, model, serial, user name). Replies here but none in `list` means the SDK's
+   replies are filtered (rp_filter, firewall); no replies means power, cabling, or a different
+   segment.
+2. **rp_filter** non-zero on the camera NIC: `sudo sysctl -w net.ipv4.conf.all.rp_filter=0 net.ipv4.conf.<nic>.rp_filter=0`.
+3. **Firewall** (ufw/firewalld active): allow UDP from the camera subnet.
+4. **Subnet**: `doctor` and `list` flag cameras whose IP is outside the host NIC subnet. The NIC
    needs a static address in the camera subnet (for example `192.168.1.x/24`).
-6. Cameras behind a router are not discovered by broadcast; use `Sdk::enumerate_gige_at(&[ip])`.
+5. Cameras behind a router are not discovered by broadcast; use `Sdk::enumerate_gige_at(&[ip])`.
 
 Report what was observed (commands, counts, warnings). Do not claim cameras exist without a
 `list` or probe result.

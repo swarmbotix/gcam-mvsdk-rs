@@ -19,8 +19,7 @@ camera is marked as outside the host NIC subnet.
 - The command is installed (`bash install.bash`; it lands in `~/.cargo/bin`). In a checkout,
   `cargo run -q -- list` works the same way.
 - The SDK is found: `gcam-mvsdk-rs doctor` prints `SDK library found`.
-- GigE discovery needs `CAP_NET_RAW` on the binary (`sudo setcap cap_net_raw,cap_net_admin+ep "$(command -v gcam-mvsdk-rs)"`)
-  or `sudo -E`.
+- No privileges: run the command as a normal user.
 
 ## Steps
 
@@ -68,7 +67,7 @@ opens every camera briefly). If two cameras share a user-set name, select by ser
 
 | Output | Next step |
 |---|---|
-| `No cameras found. ...` | camera-discovery (privileges, `rp_filter`, firewall, cabling). |
+| `No cameras found. ...` | camera-discovery (`rp_filter`, firewall, subnet, cabling). |
 | `could not find the HuaTeng MVSDK library` | sdk-setup. |
 | `<could not open: ...>` with status -13, 32774 or -45 | Another program holds the camera; use `list --no-open`, or stop that program. |
 | `WARNING : camera is not in the host NIC subnet` | camera-setip. |

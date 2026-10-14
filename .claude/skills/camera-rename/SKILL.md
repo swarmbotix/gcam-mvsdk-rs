@@ -14,7 +14,6 @@ description: Give a HuaTeng camera a user-set name (DeviceUserID) with gcam-mvsd
 
 - camera-list works and shows the camera (with its serial number).
 - No other program has the camera open (publisher, viewer, container, vendor GUI).
-- GigE: `CAP_NET_RAW` or `sudo -E`, as for `list`.
 
 ## Steps
 

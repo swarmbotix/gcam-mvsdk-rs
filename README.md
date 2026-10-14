@@ -9,6 +9,36 @@ not in this repository, because HuaTeng does not permit redistribution. The inst
 from HuaTeng's website, checks its SHA-256 against a value recorded here, and stores it in your home
 directory. Nothing from the vendor is compiled into the tool.
 
+## Run
+
+Live view with recording, from the repository directory (OpenCV and libclang must be installed,
+see [Live view](#live-view); no root or capability is needed):
+
+```bash
+cargo build --release --features view --example live_view
+./target/release/examples/live_view sb00                  # name or serial; omit it with a single camera
+./target/release/examples/live_view sb00 --mtu 1500       # if frames time out
+./target/release/examples/live_view sb00 --exposure-us 2000 --config examples/record.yaml
+# keys: r start recording, c stop recording, q or Esc quit
+# images: ~/.gcam-mvsdk/data/<YYYYMMDD_HHMMSS>_sb00/0.png, 1.png, ...  (5 per second for 30 s, see examples/record.yaml)
+```
+
+The command-line tool, after `bash install.bash`:
+
+```bash
+gcam-mvsdk-rs list                                        # every camera; --json for scripts; --no-open while others stream
+gcam-mvsdk-rs info sb00                                   # settings and capabilities of one camera
+gcam-mvsdk-rs grab sb00 -n 3 -o frames/ --mtu 1500        # save PNG frames
+gcam-mvsdk-rs set sb00 --frame-rate 30 --exposure-us 5000 # change settings; add --save B to persist
+gcam-mvsdk-rs rename <SN> sb00                            # give a camera a name
+gcam-mvsdk-rs setip <MAC> 192.168.1.50 255.255.255.0 0.0.0.0
+gcam-mvsdk-rs doctor                                      # SDK, rp_filter, firewall, NIC subnets
+```
+
+Tests and checks for the viewer: `cargo test --features view --example live_view` and
+`cargo clippy --features view --example live_view -- -D warnings`. Stop any program that streams
+from the camera before starting the viewer; a camera is held by one process at a time.
+
 ## Quick start
 
 ```bash
@@ -51,13 +81,10 @@ below is also printed by the script while it runs, and `bash install.bash --help
    (58 MB, plain HTTP), compares the SHA-256 with the value in `sdk-manifest.toml`, and refuses the
    file if it differs. Extracts it to `~/.gcam-mvsdk/2.1.0.49/`. With `--from FILE` it uses an
    archive you downloaded yourself instead, verified the same way.
-6. **Privileges for camera discovery (asks first).** GigE cameras answer a broadcast that Linux only
-   allows from a process with the `CAP_NET_RAW` capability. The script shows the command
-   `sudo setcap cap_net_raw,cap_net_admin+ep ~/.cargo/bin/gcam-mvsdk-rs` and asks before running
-   it. Saying no is fine; see [Privileges](#privileges-and-network) for the alternative.
-7. **USB udev rules (only with `--udev`).** Copies the vendor's two rule files to
-   `/etc/udev/rules.d/` and reloads udev. Skip this unless you have USB cameras.
-8. **Verifies.** Runs `gcam-mvsdk-rs doctor` and `gcam-mvsdk-rs list`, then prints where everything
+6. **USB udev rules (only with `--udev`).** Copies the vendor's two rule files to
+   `/etc/udev/rules.d/` and reloads udev. Skip this unless you have USB cameras. GigE cameras need
+   no privileges: discovery and streaming work from a normal user process.
+7. **Verifies.** Runs `gcam-mvsdk-rs doctor` and `gcam-mvsdk-rs list`, then prints where everything
    went.
 
 All `sudo` commands are collected and shown together before the first prompt. `--no-sudo` prints
@@ -83,7 +110,6 @@ Only these, each one only with your explicit `sudo` confirmation:
 
 | Change | Why | Undo |
 |---|---|---|
-| `setcap cap_net_raw,cap_net_admin+ep` on `~/.cargo/bin/gcam-mvsdk-rs` | GigE discovery broadcast | `sudo setcap -r ~/.cargo/bin/gcam-mvsdk-rs`, or just delete the file |
 | `apt-get install build-essential pkg-config` (Debian/Ubuntu, only if no C compiler) | Rust needs a linker | `sudo apt-get remove build-essential pkg-config` |
 | Copy `88-mvusb.rules`, `99-mvusb.rules` to `/etc/udev/rules.d/` (only with `--udev`) | USB camera access without root | `sudo rm /etc/udev/rules.d/88-mvusb.rules /etc/udev/rules.d/99-mvusb.rules` |
 
@@ -117,8 +143,8 @@ then the system library path. `gcam-mvsdk-rs doctor` shows which one is in use.
 
 **Finding cameras.** `list` sends a GigE Vision discovery broadcast on every network card and
 waits for replies. This reaches only cameras on the same network segment as a card in your
-machine, and only when the process may open raw sockets (step 6 above, or `sudo -E`). USB cameras
-are found through the udev rules.
+machine. No privileges are needed; the command runs as a normal user. USB cameras are found
+through the udev rules.
 
 ## Commands
 
@@ -131,7 +157,7 @@ are found through the udev rules.
 | `gcam-mvsdk-rs info <NAME or SN>` | Exposure, gain, resolution, trigger, image settings and capabilities of one camera. |
 | `gcam-mvsdk-rs grab <NAME or SN> -n 3 -o frames/` | Save frames as PNG. `--exposure-us 5000` sets exposure; `--mtu 1500` fits the packet size to the NIC. |
 | `gcam-mvsdk-rs set <NAME or SN> --frame-rate 30 --exposure-us 5000 --save B` | Change the frame-rate cap (0 removes it), exposure, or `--auto-exposure on` / `off`, and print old and new values; `--save` stores them in parameter group A, B, C or D, otherwise they stay in RAM. Without options it prints the current values. |
-| `gcam-mvsdk-rs doctor` | Check the SDK, privileges, `rp_filter`, firewall, NIC subnets and camera addresses, and print the fix for each. |
+| `gcam-mvsdk-rs doctor` | Check the SDK, `rp_filter`, firewall, NIC subnets and camera addresses, and print the fix for each. |
 | `gcam-mvsdk-rs setup` | Download and verify the SDK (`install.bash` runs this for you). |
 
 `list --no-open` skips reading user-set names, which requires opening each camera briefly; use it
@@ -186,11 +212,10 @@ cargo install --git https://github.com/swarmbotix/gcam-mvsdk-rs --tag v0.1.0 --l
 cargo install gcam-mvsdk-rs
 ```
 
-Then fetch the SDK once and, if you want discovery without `sudo`, grant the capability:
+Then fetch the SDK once:
 
 ```bash
 gcam-mvsdk-rs setup
-sudo setcap cap_net_raw,cap_net_admin+ep "$(command -v gcam-mvsdk-rs)"
 gcam-mvsdk-rs list
 ```
 
@@ -250,12 +275,10 @@ fn main() -> gcam_mvsdk_rs::Result<()> {
 `frame.as_slice()` is the raw sensor buffer without a copy; `frame.process()` runs the vendor's
 image pipeline into a new buffer.
 
-Two things your program needs at run time, on every machine it runs on, exactly like the command:
-
-1. The SDK installed: `gcam-mvsdk-rs setup`, or `bash install.bash`, or `GCAM_MVSDK_DIR` pointing
-   at an extracted copy. The library finds it with the same search order as the command.
-2. `CAP_NET_RAW` for GigE discovery: `sudo setcap cap_net_raw,cap_net_admin+ep target/release/your-binary`
-   after each build, or run it with `sudo -E`.
+One thing your program needs at run time, on every machine it runs on, exactly like the command:
+the SDK installed, through `gcam-mvsdk-rs setup`, `bash install.bash`, or `GCAM_MVSDK_DIR` pointing
+at an extracted copy. The library finds it with the same search order as the command. GigE
+discovery and streaming need no privileges, so the binary runs as a normal user.
 
 ## What the SDK can change
 
@@ -280,7 +303,7 @@ What a particular camera supports, and in what range, depends on the model:
 
 ## Live view
 
-A minimal OpenCV viewer ships as an example (`examples/live_view.rs`). OpenCV cannot be
+An OpenCV viewer with recording ships as an example (`examples/live_view.rs`). OpenCV cannot be
 installed through Cargo: the `opencv` crate is a binding to the system OpenCV library, and no
 Cargo-installable OpenCV exists, so OpenCV and libclang come from the operating system's packages.
 On Ubuntu:
@@ -288,17 +311,24 @@ On Ubuntu:
 ```bash
 sudo apt-get install -y libopencv-dev clang libclang-dev
 cargo run --release --features view --example live_view -- <camera>
-# quit: q or Esc (closing the window also quits)
+# keys: r start recording, c stop recording, q or Esc quit (closing the window also quits)
 ```
 
 `<camera>` is a user-set name or serial number; omit it when exactly one camera is present.
-Options: `--exposure-us 5000` (default) and `--mtu 1500` (packet size, as for `grab`).
+Options: `--exposure-us 5000` (default), `--mtu 1500` (packet size, as for `grab`) and
+`--config FILE` (recording options, default `examples/record.yaml`).
+
+Pressing `r` records `rate_hz` images per second (default 5) for `duration_s` seconds (default 30),
+or until `c` is pressed; the camera keeps streaming at its own rate in between. The images are
+plain Mono8 PNG files, without the overlay, in a new folder per recording:
+`<data_dir>/<YYYYMMDD_HHMMSS>_<camera>/0.png, 1.png, ...`, where `<camera>` is the user-set name
+(else the serial) and `data_dir` defaults to `<sdk home>/data` (`~/.gcam-mvsdk/data`). The three
+options are set in `examples/record.yaml`; the terminal prints the folder and the image count when a
+recording stops.
+
 It needs a display: a desktop session with `DISPLAY`
 set, or, in Docker, the X socket shared into the container and `xhost +local:` run on the host.
-GigE discovery needs `CAP_NET_RAW` for the example binary as well:
-`sudo setcap cap_net_raw,cap_net_admin+ep target/release/examples/live_view` after each build, or
-`sudo -E target/release/examples/live_view sb00`. The `view` feature is off by default, so building
-the crate or the command never requires OpenCV.
+The `view` feature is off by default, so building the crate or the command never requires OpenCV.
 
 On other distributions, install OpenCV 4 and libclang as described in the `opencv` crate's own
 instructions: https://github.com/twistedfall/opencv-rust#getting-opencv
@@ -338,27 +368,26 @@ fn show(cam: &Camera) -> Result<(), Box<dyn std::error::Error>> {
 }
 ```
 
-## Privileges and network
+## Network settings
 
-GigE discovery needs four things, and streaming at the camera's full frame rate needs a fifth.
-`gcam-mvsdk-rs doctor` checks the first four and prints the command for your machine; the fifth is
-not checked by `doctor` and is explained under [Known issues](#known-issues).
+GigE discovery and streaming run as a normal user: no root, no `sudo`, no file capability. What
+they do depend on is the host's network configuration. Discovery needs three things, and streaming
+at the camera's full frame rate needs a fourth. `gcam-mvsdk-rs doctor` checks the first three and
+prints the command for your machine; the fourth is not checked by `doctor` and is explained under
+[Known issues](#known-issues).
 
 ```bash
-# 1. Raw-socket capability for the command (install.bash offers this; repeat after reinstalling)
-sudo setcap cap_net_raw,cap_net_admin+ep "$(command -v gcam-mvsdk-rs)"
-
-# 2. Reverse-path filtering off, now and after reboot (replace enp2s0 with the camera network card)
+# 1. Reverse-path filtering off, now and after reboot (replace enp2s0 with the camera network card)
 sudo sysctl -w net.ipv4.conf.all.rp_filter=0 net.ipv4.conf.enp2s0.rp_filter=0
 echo 'net.ipv4.conf.all.rp_filter=0' | sudo tee /etc/sysctl.d/90-gige-camera.conf
 
-# 3. Firewall: allow the camera subnet (ufw shown; adjust the subnet)
+# 2. Firewall: allow the camera subnet (ufw shown; adjust the subnet)
 sudo ufw allow from 192.168.1.0/24
 
-# 4. Host NIC and cameras in the same subnet: give the NIC a static address, or move a camera
+# 3. Host NIC and cameras in the same subnet: give the NIC a static address, or move a camera
 gcam-mvsdk-rs setip 00-1A-2B-3C-4D-5E 192.168.1.50 255.255.255.0 0.0.0.0
 
-# 5. Larger socket receive buffers, now and after reboot (needed for full frame rate; see Known issues)
+# 4. Larger socket receive buffers, now and after reboot (needed for full frame rate; see Known issues)
 sudo sysctl -w net.core.rmem_max=33554432 net.core.rmem_default=33554432
 printf 'net.core.rmem_max=33554432\nnet.core.rmem_default=33554432\n' \
   | sudo tee -a /etc/sysctl.d/90-gige-camera.conf
@@ -367,25 +396,21 @@ printf 'net.core.rmem_max=33554432\nnet.core.rmem_default=33554432\n' \
 sudo cp ~/.gcam-mvsdk/2.1.0.49/udev/*.rules /etc/udev/rules.d/ && sudo udevadm control --reload-rules
 ```
 
-**What step 1 means.** `setcap` marks one file so that it may open raw network sockets without
-being root. It applies to that file only, not to Rust, not to other programs, and it disappears
-when the file is replaced (for example by `cargo install` again, which is why the installer
-re-applies it). The command uses the capability for one purpose: the discovery broadcast and the
-camera control packets of the GigE Vision protocol. If you prefer not to grant it, run
-`sudo -E gcam-mvsdk-rs list` instead; `-E` keeps `GCAM_MVSDK_HOME` and `HOME` so the SDK is still
-found. Inside Docker, use `network_mode: host` and `privileged: true`.
+The `sudo` above is for changing kernel settings and the firewall once per host; the camera tool
+itself never needs it. Inside Docker, use `network_mode: host` so the discovery broadcast reaches
+the camera network.
 
 ## Troubleshooting
 
 | Symptom | Cause and fix |
 |---|---|
 | `gcam-mvsdk-rs: command not found` | `~/.cargo/bin` is not on `PATH` in this terminal. Run `source ~/.cargo/env`, or `export PATH="$HOME/.cargo/bin:$PATH"` and add it to `~/.bashrc`. Being in the repository directory does not help. |
-| `list` finds 0 cameras | Most often missing privileges: run the `setcap` command above, or `sudo -E gcam-mvsdk-rs list`. Then check power and cabling, `rp_filter` (Ubuntu 24.04 default is 2, which drops the camera's reply), the firewall, and that a network card has an address in the camera subnet (`gcam-mvsdk-rs doctor` reports each). Discovery only reaches cameras on the same network segment. Details under [Known issue 1](#1-list-finds-no-cameras-and-the-camera-is-absent-from-arp--a). |
+| `list` finds 0 cameras | Check power and cabling, `rp_filter` (Ubuntu 24.04 default is 2, which drops the camera's reply), the firewall, and that a network card has an address in the camera subnet (`gcam-mvsdk-rs doctor` reports each). Discovery only reaches cameras on the same network segment; it needs no privileges, so `sudo` does not help. Details under [Known issue 1](#1-list-finds-no-cameras-and-the-camera-is-absent-from-arp--a). |
 | `could not find the HuaTeng MVSDK library` | Run `bash install.bash` or `gcam-mvsdk-rs setup`, or set `GCAM_MVSDK_DIR`. The message lists every place that was checked. A wrong `GCAM_MVSDK_DIR` is reported, not ignored. |
 | Status `-13`, `32774` (0x8006) or `-45` when opening a camera | The camera is busy: another program or another computer holds it (a running publisher, a container, the vendor GUI). Stop that program, wait a few seconds for the camera's heartbeat to expire, or power-cycle the camera. `list --no-open` still works meanwhile. |
-| `Permission denied` | USB cameras: install the udev rules. `setcap`: needs `sudo`, and has no effect on file systems mounted `nosuid`. Files under `~/.gcam-mvsdk` owned by root (from an earlier `sudo` run): `sudo chown -R "$USER" ~/.gcam-mvsdk`. |
+| `Permission denied` | USB cameras: install the udev rules. Files under `~/.gcam-mvsdk` owned by root (from an earlier `sudo` run): `sudo chown -R "$USER" ~/.gcam-mvsdk`. |
 | `grab` times out | The GigE packet size exceeds the network card's MTU: use `--mtu 1500` (or enable jumbo frames). Also check the firewall and `rp_filter`. |
-| Frame rate stuck near 60 fps, no frames lost | `net.core.rmem_max` is at the Ubuntu default (about 200 KB) and the camera throttles itself after resend requests. Apply step 5 in [Privileges and network](#privileges-and-network); details under [Known issue 2](#2-frame-rate-capped-near-60-fps-although-no-frames-are-lost). |
+| Frame rate stuck near 60 fps, no frames lost | `net.core.rmem_max` is at the Ubuntu default (about 200 KB) and the camera throttles itself after resend requests. Apply step 4 in [Network settings](#network-settings); details under [Known issue 2](#2-frame-rate-capped-near-60-fps-although-no-frames-are-lost). |
 | Download fails, or the size or checksum does not match | The vendor may have moved or replaced the file. Download the Linux SDK from http://huatengvision.com/download/1/ and install it with `--from` (below). A checksum mismatch is never overridden. |
 
 ## Known issues
@@ -408,11 +433,11 @@ drops such packets inside the kernel, before any user-space program sees them. T
 camera is missing from `arp -a` as well. When `ufw` is enabled it additionally blocks the inbound
 GigE Vision control port (UDP 3956), which stops discovery even with `rp_filter` at 0.
 
-**Fix.** Steps 2 and 3 in [Privileges and network](#privileges-and-network): set `rp_filter` to 0
+**Fix.** Steps 1 and 2 in [Network settings](#network-settings): set `rp_filter` to 0
 for all interfaces and for the camera NIC, write the setting to `/etc/sysctl.d/90-gige-camera.conf` so it
 survives a reboot, and allow inbound traffic from the camera in the firewall (or disable `ufw` on an
 isolated lab host). If the camera still has an address outside the host subnet afterwards, move it
-with `setip` (step 4).
+with `setip` (step 3).
 
 **Verify.**
 
@@ -440,7 +465,7 @@ packets are dropped, the GigE Vision stream issues resend requests, and the came
 by stepping down to a "safe" rate of roughly 78 MB/s. The camera is choosing to send more slowly,
 which is why no frames are reported lost.
 
-**Fix.** Step 5 in [Privileges and network](#privileges-and-network): raise `net.core.rmem_max`
+**Fix.** Step 4 in [Network settings](#network-settings): raise `net.core.rmem_max`
 and `net.core.rmem_default` to 32 MB (33554432 bytes) and append them to
 `/etc/sysctl.d/90-gige-camera.conf`. The SDK sizes its sockets when a camera is opened, so restart any program
 that was already streaming. Inside Docker with `network_mode: host` the new values apply at once,
@@ -474,7 +499,7 @@ The archive is accepted only if its SHA-256 matches a release listed in `sdk-man
 bash install.bash --uninstall
 ```
 
-Removes `~/.cargo/bin/gcam-mvsdk-rs` (and with it the capability), then asks before deleting
+Removes `~/.cargo/bin/gcam-mvsdk-rs`, then asks before deleting
 `~/.gcam-mvsdk` (kept by default, because `gcam-mvsdk-py` uses the same files). To remove the rest
 by hand:
 

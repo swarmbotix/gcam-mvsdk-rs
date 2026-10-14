@@ -17,7 +17,6 @@ description: Run the capabilities example of gcam-mvsdk-rs to test, item by item
 
 - The repository checkout and a Rust toolchain (no OpenCV needed).
 - The SDK (sdk-setup) and a camera visible in camera-list, not streaming elsewhere.
-- GigE: `CAP_NET_RAW` on `target/debug/examples/capabilities` or `sudo -E`.
 
 ## Steps
 
@@ -37,8 +36,6 @@ cargo run -q --example capabilities -- sb00 --write ae_target trigger_count   # 
   refused without `--persistent`: `user_name` (renames the camera to sb03), `set_ip`
   (192.168.1.50/24), `parameter_groups` (overwrites group B), `parameter_file`
   (`/tmp/camera.config`), `parameter_mode`.
-- With `sudo -E`: `cargo build --example capabilities` first, then
-  `sudo -E target/debug/examples/capabilities sb00 gige_ip`.
 
 ## Reading the output
 
