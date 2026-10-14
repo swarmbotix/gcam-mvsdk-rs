@@ -31,3 +31,7 @@ CameraStatus.h
 
 # Frames saved by `gcam-mvsdk-rs grab`
 *.png
+
+# Recordings from examples/live_view (data_dir in examples/record.yaml); only the placeholder is tracked
+/data/*
+!/data/.gitkeep
