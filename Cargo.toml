@@ -36,22 +36,17 @@ required-features = ["cli"]
 name = "hw"
 path = "tests/hw/main.rs"
 
-# OpenCV live view with recording (keys r, c, q; options in examples/record.yaml). Needs OpenCV
-# and libclang at build time, so it is built only with `--features view`; every other target
-# builds without OpenCV installed. Its tests: `cargo test --features view --example live_view`.
-[[example]]
-name = "live_view"
-path = "examples/live_view.rs"
-required-features = ["view"]
-
 [features]
 default = ["cli"]
 # Downloader and installer for the vendor SDK (`setup` module).
 setup = ["dep:ureq", "dep:flate2", "dep:tar", "dep:sha2", "dep:toml", "dep:humantime"]
 # The `gcam-mvsdk-rs` command-line tool.
 cli = ["setup", "dep:clap", "dep:png"]
-# OpenCV, YAML and local time for the `live_view` example (not used by the library or the CLI).
-view = ["dep:opencv", "dep:serde_yaml_ng", "dep:chrono"]
+# The `gcam-mvsdk-rs view` subcommand (src/view.rs): OpenCV window with FPS overlay and PNG
+# recording. The opencv crate needs OpenCV and libclang at build time, so the subcommand exists
+# only when the CLI is built with `--features view`; the library and the rest of the CLI never
+# need OpenCV. Not a default feature.
+view = ["cli", "dep:opencv", "dep:serde_yaml_ng", "dep:chrono"]
 
 [dependencies]
 libloading = "0.8"

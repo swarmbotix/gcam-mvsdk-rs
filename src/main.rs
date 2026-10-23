@@ -5,12 +5,15 @@ use std::io::BufWriter;
 use std::net::Ipv4Addr;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use serde_json::json;
 
 use gcam_mvsdk_rs::doctor::{self, Check, Level};
+
+#[cfg(feature = "view")]
+mod view;
 use gcam_mvsdk_rs::setup::{self, Manifest, SetupOptions, SetupOutcome};
 use gcam_mvsdk_rs::{
     host_os, normalize_mac, resolve_library, Candidate, DeviceInfo, Error, OutputFormat, ParameterTeam, Result,
@@ -27,8 +30,9 @@ use gcam_mvsdk_rs::{
                   Run `gcam-mvsdk-rs setup` once to install it."
 )]
 struct Cli {
-    /// Directory for the per-camera files the SDK writes when a camera is
-    /// opened [default: <SDK home>/data, the SDK home being $GCAM_MVSDK_HOME or ~/.gcam-mvsdk]
+    /// Directory for the files the SDK keeps per camera and model: its data files, the parameter
+    /// groups A to D and its log [default: $GCAM_MVSDK_DATA_DIR, else <SDK home>/data, the SDK
+    /// home being $GCAM_MVSDK_HOME or ~/.gcam-mvsdk]
     #[arg(long, global = true, value_name = "DIR")]
     data_dir: Option<PathBuf>,
 
@@ -77,8 +81,13 @@ enum Command {
     },
     /// Save frames from one camera as PNG files
     Grab(GrabArgs),
-    /// Change frame rate and exposure of one camera; without options, print them
+    /// Change frame rate, frame-speed tier and exposure of one camera; without options, print them
     Set(SetArgs),
+    /// Stream for a few seconds without saving and report the measured frame rate
+    Measure(MeasureArgs),
+    /// Show one camera live in an OpenCV window and record PNG images (keys r, c, q)
+    #[cfg(feature = "view")]
+    View(view::ViewArgs),
     /// Check the SDK installation and the host network configuration
     Doctor,
 }
@@ -139,6 +148,9 @@ struct SetArgs {
     /// Frame-rate cap in Hz; 0 removes the cap (only some GigE models support it)
     #[arg(long, value_name = "HZ")]
     frame_rate: Option<i32>,
+    /// Frame-speed tier index from `info` (sensor readout speed, for example 0 Low, 1 Mid, 2 High)
+    #[arg(long, value_name = "IDX")]
+    frame_speed: Option<i32>,
     /// Exposure time in microseconds (turns automatic exposure off)
     #[arg(long, value_name = "US")]
     exposure_us: Option<f64>,
@@ -148,6 +160,29 @@ struct SetArgs {
     /// Store the settings in this parameter group, loaded again when the camera is next opened
     #[arg(long, value_name = "A|B|C|D", ignore_case = true)]
     save: Option<Group>,
+}
+
+#[derive(Args)]
+struct MeasureArgs {
+    /// User-set name or serial number
+    #[arg(value_name = "NAME_OR_SN")]
+    camera: String,
+    /// How long to stream
+    #[arg(long, default_value_t = 5.0, value_name = "S")]
+    seconds: f64,
+    /// Frame-speed tier index to try for this run only (not stored; `set --frame-speed --save` persists it)
+    #[arg(long, value_name = "IDX")]
+    frame_speed: Option<i32>,
+    /// Exposure time in microseconds for this run only (turns automatic exposure off)
+    #[arg(long, value_name = "US")]
+    exposure_us: Option<f64>,
+    /// Time to wait for each frame, in milliseconds
+    #[arg(long, default_value_t = 2000, value_name = "MS")]
+    timeout_ms: u64,
+    /// Largest GigE packet size to select, normally the NIC MTU
+    /// [default: $GIGE_MTU if set, otherwise keep the camera setting]
+    #[arg(long, value_name = "BYTES")]
+    mtu: Option<u32>,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug, ValueEnum)]
@@ -199,23 +234,25 @@ fn run(cli: Cli) -> Result<ExitCode> {
         Command::Info { camera } => cmd_info(&load_sdk(data_dir.as_deref(), true)?, &camera),
         Command::Grab(args) => cmd_grab(&load_sdk(data_dir.as_deref(), true)?, args),
         Command::Set(args) => cmd_set(&load_sdk(data_dir.as_deref(), true)?, args),
+        Command::Measure(args) => cmd_measure(&load_sdk(data_dir.as_deref(), true)?, args),
+        #[cfg(feature = "view")]
+        Command::View(args) => {
+            let sdk = load_sdk(data_dir.as_deref(), true)?;
+            view::run(&sdk, resolve_data_dir(data_dir.as_deref()).as_deref(), args)
+        }
         Command::Doctor => cmd_doctor(),
     }
 }
 
 /// Loads the SDK. When the command opens cameras, the SDK's per-camera data
-/// files are directed to `--data-dir` (default `<SDK home>/data`) instead of
-/// the working directory.
+/// files are directed to `--data-dir` (default `$GCAM_MVSDK_DATA_DIR`, else
+/// `<SDK home>/data`) instead of the working directory.
 fn load_sdk(data_dir: Option<&Path>, opens_cameras: bool) -> Result<Sdk> {
     let sdk = Sdk::load()?;
     if !opens_cameras {
         return Ok(sdk);
     }
-    let dir = match data_dir {
-        Some(d) => Some(d.to_path_buf()),
-        None => gcam_mvsdk_rs::sdk_home_root().map(|h| h.join("data")),
-    };
-    if let Some(dir) = dir {
+    if let Some(dir) = resolve_data_dir(data_dir) {
         match fs::create_dir_all(&dir) {
             Ok(()) => {
                 if let Err(e) = sdk.set_data_directory(&dir) {
@@ -228,6 +265,11 @@ fn load_sdk(data_dir: Option<&Path>, opens_cameras: bool) -> Result<Sdk> {
         }
     }
     Ok(sdk)
+}
+
+/// `--data-dir`, else the library's default (see `gcam_mvsdk_rs::data_dir`).
+fn resolve_data_dir(cli: Option<&Path>) -> Option<PathBuf> {
+    cli.map(Path::to_path_buf).or_else(gcam_mvsdk_rs::data_dir)
 }
 
 // ---------------------------------------------------------------------------
@@ -567,6 +609,11 @@ fn cmd_info(sdk: &Sdk, query: &str) -> Result<ExitCode> {
         Err(e) => println!("  Frame speed   : (error: {e})"),
     }
 
+    println!("\n-- Parameter groups --");
+    println!("  Stored in camera: {}", if cap.param_in_device { "yes (ParameterMode::InDevice available)" } else { "no (groups are files in the SDK data directory)" });
+    println!("  Storage mode  : {}", show(cam.parameter_mode().map(|m| format!("{m:?}"))));
+    println!("  Current group : {} (loaded when the camera is opened)", show(cam.current_parameter_team().map(|t| format!("{t:?}"))));
+
     println!("\n-- Trigger --");
     println!("  Mode          : {}", show(cam.trigger_mode()));
     println!("  Delay         : {} us", show(cam.trigger_delay_us()));
@@ -758,8 +805,15 @@ fn cmd_set(sdk: &Sdk, args: SetArgs) -> Result<ExitCode> {
     let cam = sdk.open(&dev)?;
     let on_off = |r: Result<bool>| show(r.map(|on| if on { "on" } else { "off" }));
     let (rate, exposure, auto) = (show(cam.frame_rate()), show(cam.exposure_us()), on_off(cam.auto_exposure()));
-    if args.frame_rate.is_none() && args.exposure_us.is_none() && args.auto_exposure.is_none() && args.save.is_none() {
+    let speed = show(cam.frame_speed());
+    let no_change = args.frame_rate.is_none()
+        && args.frame_speed.is_none()
+        && args.exposure_us.is_none()
+        && args.auto_exposure.is_none()
+        && args.save.is_none();
+    if no_change {
         println!("frame rate: {rate} Hz (0 = no cap)");
+        println!("frame speed: tier {speed} (see `info` for the tiers)");
         println!("exposure: {exposure} us");
         println!("auto exposure: {auto}");
         return Ok(ExitCode::SUCCESS);
@@ -767,6 +821,10 @@ fn cmd_set(sdk: &Sdk, args: SetArgs) -> Result<ExitCode> {
     if let Some(hz) = args.frame_rate {
         cam.set_frame_rate(hz)?;
         println!("frame rate: {} Hz (was {rate})", show(cam.frame_rate()));
+    }
+    if let Some(idx) = args.frame_speed {
+        cam.set_frame_speed(idx)?;
+        println!("frame speed: tier {} (was {speed})", show(cam.frame_speed()));
     }
     if let Some(mode) = args.auto_exposure {
         cam.set_auto_exposure(mode == OnOff::On)?;
@@ -780,9 +838,141 @@ fn cmd_set(sdk: &Sdk, args: SetArgs) -> Result<ExitCode> {
     match args.save {
         Some(group) => {
             cam.save_parameter(group.team())?;
-            println!("saved to parameter group {group:?}: persisted, loaded again when the camera is next opened");
+            if group == Group::A {
+                println!("saved to parameter group A: loaded every time the camera is opened");
+            } else {
+                println!(
+                    "saved to parameter group {group:?}: applied only by load_parameter; the camera loads group A \
+                     when opened, so use --save A for the defaults"
+                );
+            }
         }
         None => println!("not saved: the change is in RAM until the camera is reconfigured; add --save A|B|C|D to keep it"),
+    }
+    Ok(ExitCode::SUCCESS)
+}
+
+// ---------------------------------------------------------------------------
+// measure
+// ---------------------------------------------------------------------------
+
+/// Frames per second from a frame count and the time they span; 0 when nothing can be said.
+fn rate_hz(frames: usize, span: Duration) -> f64 {
+    let span = span.as_secs_f64();
+    if frames < 2 || span <= 0.0 {
+        0.0
+    } else {
+        (frames - 1) as f64 / span
+    }
+}
+
+/// Streams for `seconds` and prints what arrived: the host-side rate, the rate according to the
+/// camera time stamps, the SDK's own total / captured / lost counters, and the data rate on the link.
+/// Nothing is converted or saved, so the loop keeps up with any camera and the figures are the
+/// link's, not the host's.
+fn cmd_measure(sdk: &Sdk, args: MeasureArgs) -> Result<ExitCode> {
+    if args.seconds <= 0.0 || args.seconds.is_nan() {
+        return Err(Error::InvalidArgument("--seconds must be positive".into()));
+    }
+    let dev = sdk.find_device(&args.camera)?;
+    let cam = sdk.open(&dev)?;
+    let cap = cam.capability()?;
+    let user = cam.user_name().unwrap_or_default();
+    cam.set_output_format(if cap.is_mono() { OutputFormat::Mono8 } else { OutputFormat::Rgb8 })?;
+    cam.set_trigger_mode(TriggerMode::Continuous)?;
+    if let Some(idx) = args.frame_speed {
+        cam.set_frame_speed(idx)?;
+    }
+    if let Some(us) = args.exposure_us {
+        cam.set_auto_exposure(false)?;
+        cam.set_exposure_us(us)?;
+    }
+    let mtu = args.mtu.or_else(|| std::env::var("GIGE_MTU").ok().and_then(|v| v.trim().parse().ok()));
+    if let (Some(mtu), true) = (mtu, dev.is_gige()) {
+        let size = cam.set_gige_packet_size(mtu)?;
+        println!("GigE packet size: {size} bytes (limit {mtu})");
+    }
+    let tier = cam.frame_speed().map(|i| {
+        let name = cap.frame_speeds.iter().find(|s| s.index == i).map(|s| format!(" ({})", s.description));
+        format!("{i}{}", name.unwrap_or_default())
+    });
+    let res = cam.image_resolution().map(|r| format!("{}x{}", r.width, r.height));
+    println!(
+        "Camera {:?} SN {}: {}, frame-speed tier {}, frame-rate cap {}, exposure {} us, auto exposure {}",
+        user,
+        dev.serial,
+        show(res),
+        show(tier),
+        show(cam.frame_rate().map(|r| if r <= 0 { "none".to_string() } else { format!("{r} Hz") })),
+        show(cam.exposure_us().map(|v| format!("{v:.1}"))),
+        show(cam.auto_exposure().map(|on| if on { "on" } else { "off" })),
+    );
+
+    cam.play()?;
+    let timeout = Duration::from_millis(args.timeout_ms);
+    let start = Instant::now();
+    let deadline = start + Duration::from_secs_f64(args.seconds);
+    let (mut frames, mut bytes, mut timeouts) = (0usize, 0u64, 0u32);
+    let (mut first_host, mut last_host) = (None, start);
+    let (mut first_cam, mut last_cam) = (None, Duration::ZERO);
+    let mut second = 1u64;
+    let mut frames_at_second = 0usize;
+    while Instant::now() < deadline {
+        match cam.grab(timeout) {
+            Ok(frame) => {
+                let now = Instant::now();
+                frames += 1;
+                bytes += frame.len() as u64;
+                first_host.get_or_insert(now);
+                last_host = now;
+                let ts = frame.timestamp();
+                first_cam.get_or_insert(ts);
+                last_cam = ts;
+            }
+            Err(e) if e.is_timeout() => {
+                timeouts += 1;
+                eprintln!("timeout waiting for a frame ({timeouts}/3)");
+                if timeouts >= 3 {
+                    let _ = cam.pause();
+                    eprintln!(
+                        "No frames received. For GigE cameras check the packet size against the NIC MTU \
+                         (try --mtu 1500), the firewall, and rp_filter (`gcam-mvsdk-rs doctor`)."
+                    );
+                    return Err(e);
+                }
+            }
+            Err(e) => {
+                let _ = cam.pause();
+                return Err(e);
+            }
+        }
+        if start.elapsed() >= Duration::from_secs(second) {
+            println!("  {second:>3} s: {} frames in the last second", frames - frames_at_second);
+            frames_at_second = frames;
+            second += 1;
+        }
+    }
+    let stats = cam.frame_statistic();
+    cam.pause()?;
+
+    let host_span = first_host.map(|t| last_host.duration_since(t)).unwrap_or_default();
+    let cam_span = first_cam.map(|t| last_cam.saturating_sub(t)).unwrap_or_default();
+    let host_hz = rate_hz(frames, host_span);
+    let mbit_s = if host_span.as_secs_f64() > 0.0 && frames > 1 {
+        (bytes as f64 * (frames - 1) as f64 / frames as f64) * 8.0 / 1e6 / host_span.as_secs_f64()
+    } else {
+        0.0
+    };
+    println!("\n{frames} frames in {:.2} s", start.elapsed().as_secs_f64());
+    println!("measured (host arrival):  {host_hz:.2} fps");
+    println!("measured (camera stamps): {:.2} fps", rate_hz(frames, cam_span));
+    println!("link data rate:           {mbit_s:.0} Mbit/s raw");
+    match stats {
+        Ok((total, captured, lost)) => println!("SDK counters:             total {total}, captured {captured}, lost {lost}"),
+        Err(e) => println!("SDK counters:             (error: {e})"),
+    }
+    if args.frame_speed.is_some() || args.exposure_us.is_some() {
+        println!("the --frame-speed / --exposure-us values applied to this run only; persist them with `set ... --save A|B|C|D`");
     }
     Ok(ExitCode::SUCCESS)
 }
@@ -979,6 +1169,47 @@ mod tests {
         assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--auto-exposure", "maybe"]).is_err());
         assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--save", "E"]).is_err());
         assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "set"]).is_err());
+        let cli = Cli::try_parse_from(["gcam-mvsdk-rs", "set", "sb00", "--frame-speed", "2"]).unwrap();
+        let Command::Set(a) = cli.command else { panic!("not the set command") };
+        assert_eq!(a.frame_speed, Some(2));
+    }
+
+    #[test]
+    fn measure_args() {
+        let cli = Cli::try_parse_from(["gcam-mvsdk-rs", "measure", "sb00"]).unwrap();
+        let Command::Measure(a) = cli.command else { panic!("not the measure command") };
+        assert_eq!((a.camera.as_str(), a.seconds, a.frame_speed, a.timeout_ms), ("sb00", 5.0, None, 2000));
+        let cli = Cli::try_parse_from([
+            "gcam-mvsdk-rs", "measure", "sb00", "--seconds", "2.5", "--frame-speed", "2", "--exposure-us", "3000", "--mtu", "1500",
+        ])
+        .unwrap();
+        let Command::Measure(a) = cli.command else { panic!("not the measure command") };
+        assert_eq!((a.seconds, a.frame_speed, a.exposure_us, a.mtu), (2.5, Some(2), Some(3000.0), Some(1500)));
+        assert!(Cli::try_parse_from(["gcam-mvsdk-rs", "measure"]).is_err());
+    }
+
+    #[cfg(feature = "view")]
+    #[test]
+    fn view_args() {
+        let cli = Cli::try_parse_from(["gcam-mvsdk-rs", "view"]).unwrap();
+        let Command::View(a) = cli.command else { panic!("not the view command") };
+        assert_eq!((a.camera, a.exposure_us, a.frame_speed, a.mtu, a.config), (None, 5000.0, None, None, None));
+        let cli = Cli::try_parse_from([
+            "gcam-mvsdk-rs", "view", "sb00", "--exposure-us", "2000", "--frame-speed", "1", "--mtu", "1500", "--config", "r.yaml",
+        ])
+        .unwrap();
+        let Command::View(a) = cli.command else { panic!("not the view command") };
+        assert_eq!(a.camera.as_deref(), Some("sb00"));
+        assert_eq!((a.exposure_us, a.frame_speed, a.mtu), (2000.0, Some(1), Some(1500)));
+        assert_eq!(a.config.as_deref(), Some(Path::new("r.yaml")));
+    }
+
+    #[test]
+    fn rate_from_count_and_span() {
+        assert_eq!(rate_hz(0, Duration::from_secs(1)), 0.0);
+        assert_eq!(rate_hz(1, Duration::from_secs(1)), 0.0);
+        assert_eq!(rate_hz(61, Duration::from_secs(1)), 60.0);
+        assert_eq!(rate_hz(61, Duration::ZERO), 0.0);
     }
 
     #[test]

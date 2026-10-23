@@ -23,6 +23,10 @@ pub const ENV_HW_TEST: &str = "GCAM_MVSDK_HW_TEST";
 /// Environment variable naming the SDK home, the directory that holds
 /// `<version>/` installations. Default: `~/.gcam-mvsdk`.
 pub const ENV_HOME: &str = "GCAM_MVSDK_HOME";
+/// Environment variable naming the SDK data directory (see [`data_dir`]).
+pub const ENV_DATA_DIR: &str = "GCAM_MVSDK_DATA_DIR";
+/// Name of the data directory under the SDK home when `GCAM_MVSDK_DATA_DIR` is not set.
+pub const DATA_DIR_NAME: &str = "data";
 /// Name of the default SDK home inside the user's home directory.
 pub const HOME_DIR_NAME: &str = ".gcam-mvsdk";
 /// Name of the developer-checkout SDK directory inside the working directory.
@@ -135,33 +139,57 @@ impl fmt::Display for HomeSource {
     }
 }
 
+/// A path from an environment variable: trimmed, an empty value counts as
+/// unset (`None`), and a leading `~` is expanded with `user_home`.
+fn path_from_env(raw: &OsStr, user_home: Option<&Path>) -> Option<PathBuf> {
+    match raw.to_str() {
+        Some(text) => {
+            let text = text.trim();
+            if text.is_empty() {
+                None
+            } else if text == "~" {
+                user_home.map(Path::to_path_buf)
+            } else if let Some(rest) = text.strip_prefix("~/") {
+                user_home.map(|h| h.join(rest))
+            } else {
+                Some(PathBuf::from(text))
+            }
+        }
+        None if raw.is_empty() => None,
+        None => Some(PathBuf::from(raw)),
+    }
+}
+
 /// Resolves the SDK home from the value of `GCAM_MVSDK_HOME` and the user's
 /// home directory, as the Python package does: the value is trimmed, an empty
 /// value counts as unset, and a leading `~` is expanded. Without the variable
 /// the result is `<user home>/.gcam-mvsdk`.
 pub fn resolve_sdk_home(env_value: Option<&OsStr>, user_home: Option<&Path>) -> Option<(PathBuf, HomeSource)> {
-    if let Some(raw) = env_value {
-        let path = match raw.to_str() {
-            Some(text) => {
-                let text = text.trim();
-                if text.is_empty() {
-                    None
-                } else if text == "~" {
-                    user_home.map(Path::to_path_buf)
-                } else if let Some(rest) = text.strip_prefix("~/") {
-                    user_home.map(|h| h.join(rest))
-                } else {
-                    Some(PathBuf::from(text))
-                }
-            }
-            None if raw.is_empty() => None,
-            None => Some(PathBuf::from(raw)),
-        };
-        if let Some(p) = path {
-            return Some((p, HomeSource::Env));
-        }
+    if let Some(p) = env_value.and_then(|raw| path_from_env(raw, user_home)) {
+        return Some((p, HomeSource::Env));
     }
     user_home.map(|h| (h.join(HOME_DIR_NAME), HomeSource::Default))
+}
+
+/// Resolves the SDK data directory, where the SDK keeps its per-camera files
+/// (`Data/<serial>.mvdat`), the parameter groups A to D (`Configs/`) and its
+/// log: `GCAM_MVSDK_DATA_DIR` (trimmed, empty counts as unset, leading `~`
+/// expanded), else `<sdk home>/data`. A relative value is kept as given.
+pub fn resolve_data_dir(env_value: Option<&OsStr>, user_home: Option<&Path>, sdk_home: Option<&Path>) -> Option<PathBuf> {
+    env_value
+        .and_then(|raw| path_from_env(raw, user_home))
+        .or_else(|| sdk_home.map(|h| h.join(DATA_DIR_NAME)))
+}
+
+/// The SDK data directory for this process: `$GCAM_MVSDK_DATA_DIR`, else
+/// `<sdk home>/data` (see [`sdk_home`]). A relative value from the variable
+/// is made absolute against the working directory, so that every program that
+/// opens a camera, whatever its working directory, reports the same place.
+pub fn data_dir() -> Option<PathBuf> {
+    let user_home = user_home_dir();
+    let home = resolve_sdk_home(std::env::var_os(ENV_HOME).as_deref(), user_home.as_deref()).map(|(p, _)| p);
+    let dir = resolve_data_dir(std::env::var_os(ENV_DATA_DIR).as_deref(), user_home.as_deref(), home.as_deref())?;
+    Some(std::path::absolute(&dir).unwrap_or(dir))
 }
 
 /// The SDK home for this process: `$GCAM_MVSDK_HOME`, else `~/.gcam-mvsdk`.
@@ -913,6 +941,20 @@ mod tests {
         );
         assert_eq!(HomeSource::Env.to_string(), "from $GCAM_MVSDK_HOME");
         assert_eq!(HomeSource::Default.to_string(), "default");
+    }
+
+    #[test]
+    fn data_dir_resolution() {
+        let home = Path::new("/home/u");
+        let sdk = Path::new("/home/u/.gcam-mvsdk");
+        let r = |v: Option<&str>| resolve_data_dir(v.map(OsStr::new), Some(home), Some(sdk));
+        assert_eq!(r(None), Some(PathBuf::from("/home/u/.gcam-mvsdk/data")));
+        assert_eq!(r(Some("")), Some(PathBuf::from("/home/u/.gcam-mvsdk/data")));
+        assert_eq!(r(Some(" ~/ws/data ")), Some(PathBuf::from("/home/u/ws/data")));
+        assert_eq!(r(Some("/srv/cams")), Some(PathBuf::from("/srv/cams")));
+        assert_eq!(r(Some("../data")), Some(PathBuf::from("../data")));
+        assert_eq!(resolve_data_dir(None, None, None), None);
+        assert_eq!(resolve_data_dir(Some(OsStr::new("/srv/cams")), None, None), Some(PathBuf::from("/srv/cams")));
     }
 
     #[test]

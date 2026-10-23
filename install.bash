@@ -286,14 +286,33 @@ fi
 # Build and install the command
 # ---------------------------------------------------------------------------
 
+# The `view` subcommand (OpenCV window) is compiled in only when OpenCV and libclang are present,
+# because the opencv crate needs both at build time; everything else never needs them.
+VIEW_FEATURE=()
+if command -v pkg-config >/dev/null 2>&1 && pkg-config --exists opencv4 2>/dev/null; then
+    if [[ -z "${LIBCLANG_PATH:-}" ]]; then
+        for d in /usr/lib/llvm-*/lib; do
+            if compgen -G "$d/libclang.so*" >/dev/null; then export LIBCLANG_PATH="$d"; fi
+        done
+    fi
+    if [[ -n "${LIBCLANG_PATH:-}" ]] || compgen -G "/usr/lib/*/libclang.so*" >/dev/null; then
+        VIEW_FEATURE=(--features view)
+        info "OpenCV and libclang found: the view subcommand is included (--features view${LIBCLANG_PATH:+, LIBCLANG_PATH=$LIBCLANG_PATH})"
+    else
+        info "OpenCV found but no libclang: the view subcommand is left out (install clang libclang-dev and rerun)"
+    fi
+else
+    info "OpenCV not found: the view subcommand is left out (install libopencv-dev clang libclang-dev and rerun to add it)"
+fi
+
 if [[ $DEV -eq 1 ]]; then
-    step "Building ${PKG} in ${REPO_DIR} (cargo build --locked)"
-    (cd "$REPO_DIR" && cargo build --locked --quiet) || die "cargo build failed. If this machine is offline, the crates in Cargo.lock must already be in the cargo cache (run 'cargo fetch --locked' while online)."
+    step "Building ${PKG} in ${REPO_DIR} (cargo build --locked ${VIEW_FEATURE[*]})"
+    (cd "$REPO_DIR" && cargo build --locked --quiet "${VIEW_FEATURE[@]}") || die "cargo build failed. If this machine is offline, the crates in Cargo.lock must already be in the cargo cache (run 'cargo fetch --locked' while online)."
     BIN="$REPO_DIR/target/debug/$PKG"
     SDK_DEST="$REPO_DIR/vendor"
 else
-    step "Installing ${PKG} into ${CARGO_BIN} (cargo install --locked; takes a minute)"
-    cargo install --path "$REPO_DIR" --locked --quiet || die "cargo install failed. If this machine is offline, the crates in Cargo.lock must already be in the cargo cache (run 'cargo fetch --locked' while online)."
+    step "Installing ${PKG} into ${CARGO_BIN} (cargo install --locked ${VIEW_FEATURE[*]}; takes a minute)"
+    cargo install --path "$REPO_DIR" --locked --quiet "${VIEW_FEATURE[@]}" || die "cargo install failed. If this machine is offline, the crates in Cargo.lock must already be in the cargo cache (run 'cargo fetch --locked' while online)."
     BIN="$CARGO_BIN/$PKG"
     SDK_DEST="$SDK_HOME"
 fi

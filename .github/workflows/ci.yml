@@ -26,8 +26,8 @@ jobs:
       - run: cargo test --locked
       - run: cargo clippy --locked --all-targets -- -D warnings
 
-  # The OpenCV live-view example is behind the `view` feature; this job is its only build check.
-  example-view:
+  # The OpenCV `view` subcommand is behind the `view` feature; this job is its only build check.
+  feature-view:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,5 +36,5 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
-      - run: cargo clippy --locked --features view --example live_view -- -D warnings
-      - run: cargo test --locked --features view --example live_view
+      - run: cargo clippy --locked --features view --all-targets -- -D warnings
+      - run: cargo test --locked --features view

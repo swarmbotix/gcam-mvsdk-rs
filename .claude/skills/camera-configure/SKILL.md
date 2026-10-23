@@ -36,10 +36,22 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
    gcam-mvsdk-rs set sb00 --frame-rate 30                  # cap at 30 Hz; 0 removes the cap (some GigE models only)
    gcam-mvsdk-rs set sb00 --exposure-us 5000               # manual exposure; turns auto exposure off
    gcam-mvsdk-rs set sb00 --auto-exposure on
-   gcam-mvsdk-rs set sb00 --frame-rate 30 --exposure-us 5000 --save B   # also store in group B
+   gcam-mvsdk-rs set sb00 --frame-speed 2                  # sensor readout tier from `info` (0 Low, 1 Mid, 2 High on MV-GE134GM)
+   gcam-mvsdk-rs set sb00 --frame-rate 30 --exposure-us 5000 --save A   # also store in group A, the group loaded on open
    ```
-   Without `--save` the change stays in RAM. For a single capture, `grab --exposure-us` works too
-   (see camera-grab). Everything else goes through the library (step 3).
+   Without `--save` the change stays in RAM. To see what a setting does to the delivered frame
+   rate before saving it, `measure` streams for a few seconds with no window and no files:
+   ```bash
+   gcam-mvsdk-rs measure sb00 --seconds 5                           # as configured now
+   gcam-mvsdk-rs measure sb00 --frame-speed 2 --exposure-us 5000    # try a tier and exposure for this run only
+   ```
+   It prints fps from host arrival and from camera time stamps, the raw link rate in Mbit/s and the
+   SDK counters (lost > 0 means the link or host drops frames). The frame-rate cap only lowers the
+   rate; the tier and the exposure set the ceiling (1 / exposure), and auto exposure in a dim scene
+   lengthens the exposure and lowers the rate with it. A saved group is a file
+   `<SDK data dir>/Configs/<model>-Group<N>.config` on this host (this model has no in-camera
+   storage); the data dir is `$GCAM_MVSDK_DATA_DIR`, else `<SDK home>/data`, or `--data-dir` for
+   one command. For a single capture, `grab --exposure-us` works too (see camera-grab). Everything else goes through the library (step 3).
 3. **Library: use the template** `.claude/skills/camera-configure/configure.rs`. It prints the
    current values and ranges, applies the values in its `configure()` function with `--apply`,
    and stores them with `--save A|B|C|D`:
@@ -51,7 +63,7 @@ The safe methods are in `src/controls.rs` and `src/camera.rs`.
    cargo build --release
    ./target/release/cam-config sb00                    # read only
    ./target/release/cam-config sb00 --apply            # apply for this session
-   ./target/release/cam-config sb00 --apply --save B   # apply and store in group B
+   ./target/release/cam-config sb00 --apply --save A   # apply and store in group A, the group loaded on open
    ```
 4. **Methods for each setting** (all on `gcam_mvsdk_rs::Camera`):
 

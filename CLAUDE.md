@@ -37,15 +37,21 @@ signatures in `src/ffi.rs` are hand-written in Rust syntax, not pasted header te
 - `src/error.rs`: `MvError` (status + `CameraGetErrorString` text), `LoadError`, crate `Error`, `Result`.
 - `src/setup.rs` (feature `setup`): manifest parsing, HEAD/GET download, SHA-256, tar extraction, Windows installer branch.
 - `src/doctor.rs`: host checks (rp_filter, firewall, NIC subnets).
-- `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | set | doctor`.
+- `src/main.rs` (feature `cli`): clap CLI `setup | list | rename | setip | info | grab | set | measure | view (feature `view`) | doctor`.
 - `tests/`: struct sizes, status table, search path, manifest, setup/extraction, `capabilities_doc.rs` (document and example identical), `symbols.rs` (every named SDK function exists in a local SDK; skips without one); `tests/hw/` hardware tests.
 - `examples/capabilities.rs`: one compiled snippet per capability between `// [doc:name]` and `// [/doc]` markers; `docs/CAPABILITIES.md` shows exactly those regions.
-- `examples/live_view.rs` (feature `view`, `required-features`): OpenCV window with FPS overlay and
-  recording (`r` starts, `c` stops, `q` quits; `rate_hz` PNG images per second for `duration_s`
-  seconds into `<sdk home>/data/<YYYYMMDD_HHMMSS>_<camera>/N.png`); the only code that uses OpenCV.
-  Its options are `examples/record.yaml` (same content as the Python repository's copy); its
-  unit tests (keys, config, sampling) live in the file and run with
-  `cargo test --features view --example live_view`.
+- `src/view.rs` (feature `view`, `#[cfg]`-gated module of the binary): the `view` subcommand,
+  an OpenCV window with FPS overlay, key hints and recording (`r` starts, `c` stops, `q` quits;
+  `rate_hz` PNG images per second for `duration_s` seconds into
+  `<data dir>/<YYYYMMDD_HHMMSS>_<camera>/N.png`); the only code that uses OpenCV. It selects the
+  fastest frame-speed tier on every start and persists nothing. Recording options come from
+  `--config FILE` (`examples/record.yaml` is a sample, same content as the Python repository's
+  copy); its unit tests (keys, config, sampling) live in the file and run with
+  `cargo test --features view`.
+- SDK data directory (`sdk::data_dir`): `$GCAM_MVSDK_DATA_DIR`, else `<sdk home>/data`; the CLI
+  (`--data-dir` overrides) and the IPS publisher send the SDK's parameter groups, `.mvdat` files
+  and log there. Group A is what the camera loads on every open; this model cannot store groups
+  in the camera (`param_in_device` false), so they are files `Configs/<model>-Group<N>.config`.
 - `install.bash`: end-user installer. `scripts/fetch-sdk.sh`: SDK into `./vendor/`.
 - `sdk-manifest.toml`: known vendor releases.
 - `.claude/skills/`: task guides, each a `SKILL.md`. Using the driver: `camera-list`,
@@ -66,12 +72,13 @@ cargo publish --dry-run --allow-dirty --target-dir target/package-verify
 sh scripts/check-no-vendor-files.sh
 ./scripts/fetch-sdk.sh --from <tarball>           # SDK into ./vendor/ for cargo run
 GCAM_MVSDK_HW_TEST=1 cargo test --test hw -- --nocapture   # bench machine only
-cargo clippy --features view --example live_view -- -D warnings   # needs libopencv-dev clang libclang-dev
-cargo test --features view --example live_view                    # the example's own tests, same requirement
+cargo clippy --features view --all-targets -- -D warnings         # needs libopencv-dev clang libclang-dev
+cargo test --features view                                        # includes src/view.rs tests, same requirement
+cargo install --path . --locked --features view                   # the installed command with `view`
 ```
 
-Without `--features view` every command above skips the example, so none of them needs OpenCV;
-the CI job `example-view` installs OpenCV and runs the clippy and test commands for the example.
+Without `--features view` every command above skips `src/view.rs`, so none of them needs OpenCV;
+the CI job `feature-view` installs OpenCV and runs the clippy and test commands with the feature.
 
 All of these must pass before work is considered done. Run the publish dry run with its own
 `--target-dir`: with the shared target directory, its verification build overwrites the
@@ -136,7 +143,8 @@ to `../gcam-mvsdk-py/sdk-manifest.toml`: edit both, then
 - Commit vendor binaries, headers, archives, or `vendor/`; or add a `build.rs` that touches the SDK.
 - Link the vendor SDK at build time, add bindgen for it, or commit generated bindings. (The
   `opencv` crate builds with libclang, which is why it stays an optional dependency behind `view`;
-  never add `view` to the default features or use OpenCV from `src/`.)
+  never add `view` to the default features, and use OpenCV only inside `src/view.rs` under
+  `#[cfg(feature = "view")]`, never from the library.)
 - Add a second crate or rename anything.
 - Call `CameraSdkInit` outside `Sdk`, or close a handle outside `Camera::drop`.
 - Write to the SDK home from tests (use `tempfile`), or run `rename`/`setip` against production

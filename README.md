@@ -11,33 +11,30 @@ directory. Nothing from the vendor is compiled into the tool.
 
 ## Run
 
-Live view with recording, from the repository directory (OpenCV and libclang must be installed,
-see [Live view](#live-view); no root or capability is needed):
-
-```bash
-cargo build --release --features view --example live_view
-./target/release/examples/live_view sb00                  # name or serial; omit it with a single camera
-./target/release/examples/live_view sb00 --mtu 1500       # if frames time out
-./target/release/examples/live_view sb00 --exposure-us 2000 --config examples/record.yaml
-# keys: r start recording, c stop recording, q or Esc quit
-# images: ~/.gcam-mvsdk/data/<YYYYMMDD_HHMMSS>_sb00/0.png, 1.png, ...  (5 per second for 30 s, see examples/record.yaml)
-```
-
 The command-line tool, after `bash install.bash`:
 
 ```bash
 gcam-mvsdk-rs list                                        # every camera; --json for scripts; --no-open while others stream
 gcam-mvsdk-rs info sb00                                   # settings and capabilities of one camera
-gcam-mvsdk-rs grab sb00 -n 3 -o frames/ --mtu 1500        # save PNG frames
-gcam-mvsdk-rs set sb00 --frame-rate 30 --exposure-us 5000 # change settings; add --save B to persist
+gcam-mvsdk-rs measure sb00                                # delivered fps and lost frames over 5 s, no window, no files
+gcam-mvsdk-rs set sb00 --frame-speed 2 --exposure-us 5000 --save A  # change settings; --save A makes them the power-on defaults
+gcam-mvsdk-rs view sb00                                   # live window; r records PNG images, c stops, q quits
+gcam-mvsdk-rs grab sb00 -n 3 -o frames/ --mtu 1500        # save PNG frames without a window
 gcam-mvsdk-rs rename <SN> sb00                            # give a camera a name
 gcam-mvsdk-rs setip <MAC> 192.168.1.50 255.255.255.0 0.0.0.0
 gcam-mvsdk-rs doctor                                      # SDK, rp_filter, firewall, NIC subnets
 ```
 
-Tests and checks for the viewer: `cargo test --features view --example live_view` and
-`cargo clippy --features view --example live_view -- -D warnings`. Stop any program that streams
-from the camera before starting the viewer; a camera is held by one process at a time.
+`view` exists when the command was built with `--features view` (OpenCV and libclang installed;
+`install.bash` adds the feature when it finds them, see [Live view](#live-view)). A camera is
+held by one process at a time: stop any program that streams from it before `view`, `measure`
+or `grab`.
+
+Everything the SDK keeps about the cameras (the parameter groups A to D, of which A is loaded on
+every open, the per-camera data files and its log) goes to the SDK data directory:
+`$GCAM_MVSDK_DATA_DIR`, else `<SDK home>/data`, or `--data-dir DIR` for one command. Point the
+variable at a folder of your checkout (this repository ignores `data/`) to keep all camera
+configuration with the project.
 
 ## Quick start
 
@@ -156,7 +153,9 @@ through the udev rules.
 | `gcam-mvsdk-rs setip <MAC> <IP> <MASK> <GW>` | Give a GigE camera a static address; works even when it is on the wrong subnet. Use `0.0.0.0` for no gateway. |
 | `gcam-mvsdk-rs info <NAME or SN>` | Exposure, gain, resolution, trigger, image settings and capabilities of one camera. |
 | `gcam-mvsdk-rs grab <NAME or SN> -n 3 -o frames/` | Save frames as PNG. `--exposure-us 5000` sets exposure; `--mtu 1500` fits the packet size to the NIC. |
-| `gcam-mvsdk-rs set <NAME or SN> --frame-rate 30 --exposure-us 5000 --save B` | Change the frame-rate cap (0 removes it), exposure, or `--auto-exposure on` / `off`, and print old and new values; `--save` stores them in parameter group A, B, C or D, otherwise they stay in RAM. Without options it prints the current values. |
+| `gcam-mvsdk-rs set <NAME or SN> --frame-rate 30 --exposure-us 5000 --save A` | Change the frame-rate cap (0 removes it), the frame-speed tier (`--frame-speed 2`, the sensor readout speed listed by `info`), exposure, or `--auto-exposure on` / `off`, and print old and new values; `--save` stores them in parameter group A, B, C or D, otherwise they stay in RAM. Group A is the one the camera loads when opened, so save there to make the change the new default; B to D hold alternative setups loaded with `load_parameter`. On models without in-camera storage the groups are files on this host, `<SDK home>/data/Configs/<model>-Group<N>.config`, shared by all cameras of that model. Without options it prints the current values. |
+| `gcam-mvsdk-rs measure <NAME or SN> --seconds 5` | Stream without saving or displaying and print the measured frame rate (host arrival and camera time stamps), the raw link data rate and the SDK's total / captured / lost counters. `--frame-speed IDX` and `--exposure-us US` apply to that run only; `--mtu` as for `grab`. |
+| `gcam-mvsdk-rs view <NAME or SN>` | Live image in an OpenCV window with an fps overlay; `r` starts a PNG recording, `c` stops it, `q` or Esc quits. Needs the `view` feature; see [Live view](#live-view). |
 | `gcam-mvsdk-rs doctor` | Check the SDK, `rp_filter`, firewall, NIC subnets and camera addresses, and print the fix for each. |
 | `gcam-mvsdk-rs setup` | Download and verify the SDK (`install.bash` runs this for you). |
 
@@ -303,28 +302,31 @@ What a particular camera supports, and in what range, depends on the model:
 
 ## Live view
 
-An OpenCV viewer with recording ships as an example (`examples/live_view.rs`). OpenCV cannot be
-installed through Cargo: the `opencv` crate is a binding to the system OpenCV library, and no
-Cargo-installable OpenCV exists, so OpenCV and libclang come from the operating system's packages.
-On Ubuntu:
+`gcam-mvsdk-rs view` shows one camera in an OpenCV window and records PNG images on request. It
+is compiled in only with the `view` feature, because the `opencv` crate is a binding to the system
+OpenCV library and generates it with libclang at build time; no Cargo-installable OpenCV exists.
+`install.bash` adds the feature when it finds OpenCV and libclang. By hand, on Ubuntu:
 
 ```bash
 sudo apt-get install -y libopencv-dev clang libclang-dev
-cargo run --release --features view --example live_view -- <camera>
+cargo install --path . --locked --features view          # or: cargo run --release --features view -- view sb00
+gcam-mvsdk-rs view sb00
 # keys: r start recording, c stop recording, q or Esc quit (closing the window also quits)
 ```
 
-`<camera>` is a user-set name or serial number; omit it when exactly one camera is present.
-Options: `--exposure-us 5000` (default), `--mtu 1500` (packet size, as for `grab`) and
-`--config FILE` (recording options, default `examples/record.yaml`).
+`sb00` is a user-set name or serial number; omit it when exactly one camera is present. Options:
+`--exposure-us 5000` (default; automatic exposure off), `--frame-speed IDX` (sensor readout tier
+from `info`; default the fastest the camera lists, so the window shows the camera's full rate
+whatever its stored defaults), `--mtu 1500` (packet size, as for `grab`) and `--config FILE`
+(recording options). Nothing is persisted in the camera.
 
 Pressing `r` records `rate_hz` images per second (default 5) for `duration_s` seconds (default 30),
 or until `c` is pressed; the camera keeps streaming at its own rate in between. The images are
 plain Mono8 PNG files, without the overlay, in a new folder per recording:
 `<data_dir>/<YYYYMMDD_HHMMSS>_<camera>/0.png, 1.png, ...`, where `<camera>` is the user-set name
-(else the serial) and `data_dir` defaults to `<sdk home>/data` (`~/.gcam-mvsdk/data`). The three
-options are set in `examples/record.yaml`; the terminal prints the folder and the image count when a
-recording stops.
+(else the serial) and `data_dir` defaults to the SDK data directory (see [Run](#run)). The three
+options are read from the YAML file given with `--config`; `examples/record.yaml` is a sample.
+The terminal prints the folder and the image count when a recording stops.
 
 It needs a display: a desktop session with `DISPLAY`
 set, or, in Docker, the X socket shared into the container and `xhost +local:` run on the host.
